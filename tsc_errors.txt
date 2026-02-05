@@ -1,0 +1,7 @@
+src/app/admin/users/[userId]/growth/page.tsx(54,35): error TS7006: Parameter 'm' implicitly has an 'any' type.
+src/app/admin/users/[userId]/growth/page.tsx(138,52): error TS7006: Parameter 'm' implicitly has an 'any' type.
+src/app/admin/users/[userId]/story/page.tsx(50,48): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/app/growth/page.tsx(47,35): error TS7006: Parameter 'm' implicitly has an 'any' type.
+src/app/story/history/page.tsx(41,48): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/app/timeline/page.tsx(34,31): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/app/timeline/page.tsx(39,30): error TS7006: Parameter 'm' implicitly has an 'any' type.

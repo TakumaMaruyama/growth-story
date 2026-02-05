@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  loginId       String    @unique @map("login_id")
+  displayName   String    @map("display_name")
+  email         String?
+  role          Role      @default(USER)
+  passwordHash  String    @map("password_hash")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  sessions          Session[]
+  dailyLogs         DailyLog[]
+  storyVersions     StoryVersion[]
+  growthProfile     GrowthProfile?
+  growthMeasurements GrowthMeasurement[]
+
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model DailyLog {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  logDate      DateTime @map("log_date") @db.Date
+  score        Int      // 1-10
+  practiced    Boolean  @default(false)
+  goodText     String?  @map("good_text") @db.Text
+  improveText  String?  @map("improve_text") @db.Text
+  tomorrowText String?  @map("tomorrow_text") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, logDate])
+  @@index([userId, logDate(sort: Desc)])
+  @@map("daily_logs")
+}
+
+model StoryVersion {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  version   Int
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers StoryAnswer[]
+
+  @@unique([userId, version])
+  @@index([userId, version(sort: Desc)])
+  @@map("story_versions")
+}
+
+model StoryAnswer {
+  id             String @id @default(uuid())
+  storyVersionId String @map("story_version_id")
+  questionNo     Int    @map("question_no") // 1-15
+  answerText     String @map("answer_text") @db.Text
+
+  storyVersion StoryVersion @relation(fields: [storyVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([storyVersionId, questionNo])
+  @@map("story_answers")
+}
+
+model GrowthProfile {
+  id             String    @id @default(uuid())
+  userId         String    @unique @map("user_id")
+  sex            Sex
+  birthDate      DateTime  @map("birth_date") @db.Date
+  fatherHeightCm Float?    @map("father_height_cm")
+  motherHeightCm Float?    @map("mother_height_cm")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("growth_profiles")
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+model GrowthMeasurement {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  measuredOn      DateTime @map("measured_on") @db.Date
+  heightCm        Float    @map("height_cm")
+  weightKg        Float?   @map("weight_kg")
+  sittingHeightCm Float?   @map("sitting_height_cm")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, measuredOn])
+  @@index([userId, measuredOn(sort: Desc)])
+  @@map("growth_measurements")
+}
