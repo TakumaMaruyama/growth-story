@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Nav from '@/components/Nav';
 
@@ -16,7 +16,7 @@ interface LogData {
     tomorrowText: string;
 }
 
-export default function DailyLogPage() {
+function DailyLogPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const dateParam = searchParams.get('date');
@@ -210,5 +210,22 @@ export default function DailyLogPage() {
                 </form>
             </div>
         </>
+    );
+}
+
+export default function DailyLogPage() {
+    return (
+        <Suspense
+            fallback={
+                <>
+                    <Nav />
+                    <div className="container">
+                        <p>読み込み中...</p>
+                    </div>
+                </>
+            }
+        >
+            <DailyLogPageContent />
+        </Suspense>
     );
 }

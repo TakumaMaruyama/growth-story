@@ -27,27 +27,25 @@ DATABASE_URL="postgresql://username:password@localhost:5432/growth_story_db"
 ```
 
 **Replitでデプロイする場合**:
-- Replit の Secrets で `DATABASE_URL` を設定
+- Replit の Workspace Secrets と Deployments Secrets の両方で `DATABASE_URL` を設定
 - Replit の PostgreSQL アドオンを使用推奨
 
-### 3. データベースの初期化
+### 3. データベース初期化とマイグレーション
 
 ```bash
-# マイグレーションファイルを作成（開発時）
-npm run db:migrate
-
-# または既存のマイグレーションを適用（本番）
-npm run db:init
-
 # Prisma Clientを生成
 npm run db:generate
+
+# 開発時: マイグレーションを作成して適用
+npm run db:migrate -- --name <migration_name>
+
+# 本番/デプロイ時: 既存マイグレーションを適用
+npm run db:init
 ```
 
-**Replitでの推奨手順**:
-```bash
-npm run db:push  # スキーマを直接プッシュ
-npm run db:generate
-```
+補足:
+- `npm run db:push` は開発用の試行コマンドとしては利用可能ですが、デプロイ手順には含めません
+- `prisma/migrations` 配下のファイルは必ずGitで管理します
 
 ### 4. 管理者ユーザーの作成
 
@@ -101,7 +99,27 @@ npm run start
 
 ## Replitデプロイメモ
 
-1. Secrets に `DATABASE_URL` を設定
-2. `npm run db:push && npm run db:generate` を実行
-3. 管理者を作成: `ADMIN_LOGIN_ID=admin ADMIN_PASSWORD=xxx npm run admin:create`
-4. `npm run build && npm run start` でアプリ起動
+### 初回デプロイ
+
+1. ReplitでPostgreSQLを作成
+2. Deployments Secrets に `DATABASE_URL` を設定（Workspace Secretsとは別）
+3. 依存をインストール: `npm ci`
+4. Prisma Clientを生成: `npm run db:generate`
+5. 初回マイグレーション作成・適用: `npm run db:migrate -- --name init`
+6. 初回管理者を作成: `ADMIN_LOGIN_ID=admin ADMIN_PASSWORD=xxx npm run admin:create`
+7. 生成された `prisma/migrations/...` と `prisma/migrations/migration_lock.toml` をコミットして push
+8. ビルド/起動: `npm run build && npm run start`
+
+### 2回目以降のデプロイ
+
+1. 最新コードをpull
+2. 依存をインストール: `npm ci`
+3. ビルド: `npm run build`
+4. 起動前にマイグレーション適用: `npm run db:init`
+5. 起動: `npm run start`
+
+### migrate dev がReplit上で失敗する場合
+
+- ローカルのPostgreSQL環境で `npm run db:migrate -- --name init` を実行して migration ファイルを生成
+- 生成物をGitにコミットしてReplitに反映
+- Replit側では `npm run db:init` のみ実行して適用
