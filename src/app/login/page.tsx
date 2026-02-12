@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -94,6 +95,18 @@ export default function LoginPage() {
                         {loading ? 'ログイン中...' : 'ログイン'}
                     </button>
                 </form>
+
+                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Link href="/register" style={{ fontSize: '0.875rem' }}>
+                        新規登録はこちら
+                    </Link>
+                    <Link
+                        href="/admin/users"
+                        style={{ fontSize: '0.75rem', color: 'var(--secondary)', textDecoration: 'none', opacity: 0.7 }}
+                    >
+                        管理者画面
+                    </Link>
+                </div>
             </div>
         </div>
     );
