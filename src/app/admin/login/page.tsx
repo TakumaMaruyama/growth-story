@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
     const router = useRouter();
     const [loginId, setLoginId] = useState('');
     const [password, setPassword] = useState('');
@@ -24,18 +24,20 @@ export default function LoginPage() {
             });
 
             const data = await res.json();
-
             if (!res.ok) {
                 setError(data.error || 'ログインに失敗しました');
                 return;
             }
 
-            // Redirect based on role
-            if (data.role === 'ADMIN') {
-                router.push('/admin/users');
-            } else {
-                router.push('/');
+            if (data.role !== 'ADMIN') {
+                // The login API creates a session before returning role.
+                // Clear it so USER accounts cannot remain logged in from admin login.
+                await fetch('/api/auth/logout', { method: 'POST' });
+                setError('管理者アカウントでログインしてください');
+                return;
             }
+
+            router.push('/admin/users');
         } catch {
             setError('通信エラーが発生しました');
         } finally {
@@ -47,10 +49,10 @@ export default function LoginPage() {
         <div className="container" style={{ maxWidth: '400px', marginTop: '4rem' }}>
             <div className="card">
                 <h1 className="page-title" style={{ textAlign: 'center' }}>
-                    ログイン
+                    管理者ログイン
                 </h1>
                 <p style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--secondary)' }}>
-                    身長予測 & 私の競泳物語
+                    管理者アカウントでログインしてください
                 </p>
 
                 <form onSubmit={handleSubmit}>
@@ -96,15 +98,9 @@ export default function LoginPage() {
                     </button>
                 </form>
 
-                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Link href="/register" style={{ fontSize: '0.875rem' }}>
-                        新規登録はこちら
-                    </Link>
-                    <Link
-                        href="/admin/login"
-                        style={{ fontSize: '0.75rem', color: 'var(--secondary)', textDecoration: 'none', opacity: 0.7 }}
-                    >
-                        管理者ログイン
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                    <Link href="/login" style={{ fontSize: '0.875rem', color: 'var(--secondary)' }}>
+                        通常ログインへ戻る
                     </Link>
                 </div>
             </div>
