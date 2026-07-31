@@ -1,81 +1,85 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { todayJST } from '@/lib/date';
+import { parseDailyLogDate, todayJST } from '@/lib/date';
+import { jsonResponse, readJsonObject } from '@/lib/request';
+import { parseDailyLogInput } from '@/lib/validation';
+import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
+import { DailyLogConflictError, saveDailyLog } from '@/lib/daily-log-service';
 
 export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
 
-    const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get('date') || todayJST();
+    const date = request.nextUrl.searchParams.get('date') || todayJST();
+    const logDate = parseDailyLogDate(date);
+    if (!logDate) return jsonResponse({ error: '日付は1970年以降、今日から1年以内で指定してください' }, 400);
 
-    const log = await prisma.dailyLog.findUnique({
-        where: {
-            userId_logDate: {
-                userId: user.id,
-                logDate: new Date(dateStr),
+    try {
+        const log = await prisma.dailyLog.findUnique({
+            where: { userId_logDate: { userId: user.id, logDate } },
+            select: {
+                score: true,
+                practiced: true,
+                goodText: true,
+                improveText: true,
+                tomorrowText: true,
+                revision: true,
+                updatedAt: true,
             },
-        },
-    });
+        });
 
-    return NextResponse.json({
-        user: { displayName: user.displayName },
-        today: todayJST(),
-        log,
-    });
+        return jsonResponse({
+            user: { id: user.id, displayName: user.displayName },
+            date,
+            today: todayJST(),
+            log,
+        });
+    } catch (error) {
+        console.error('Daily log read error:', error);
+        return jsonResponse({ error: '日誌を読み込めませんでした' }, 500);
+    }
 }
 
 export async function POST(request: NextRequest) {
     const user = await getCurrentUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
 
     try {
-        const { date, score, practiced, goodText, improveText, tomorrowText } = await request.json();
-
-        if (!date || !score) {
-            return NextResponse.json({ error: '日付と点数は必須です' }, { status: 400 });
+        const writeRule: RateLimitRule = {
+            namespace: 'daily-write-user',
+            identifier: user.id,
+            maxAttempts: 120,
+            windowMs: 60 * 60 * 1000,
+        };
+        const rateLimit = await consumeRateLimits([writeRule]);
+        if (!rateLimit.allowed) {
+            const response = jsonResponse(
+                { error: '保存回数が多すぎます。しばらく待ってから再度お試しください' },
+                429,
+            );
+            response.headers.set('Retry-After', String(rateLimit.retryAfterSeconds));
+            return response;
         }
 
-        if (score < 1 || score > 10) {
-            return NextResponse.json({ error: '点数は1〜10の範囲で入力してください' }, { status: 400 });
-        }
+        const json = await readJsonObject(request);
+        if (!json.ok) return json.response;
+        const input = parseDailyLogInput(json.data);
+        if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        const logDate = new Date(date);
+        const log = await saveDailyLog({ userId: user.id, ...input.value });
 
-        // Upsert daily log
-        await prisma.dailyLog.upsert({
-            where: {
-                userId_logDate: {
-                    userId: user.id,
-                    logDate,
-                },
-            },
-            update: {
-                score,
-                practiced: practiced ?? false,
-                goodText: goodText || null,
-                improveText: improveText || null,
-                tomorrowText: tomorrowText || null,
-            },
-            create: {
-                userId: user.id,
-                logDate,
-                score,
-                practiced: practiced ?? false,
-                goodText: goodText || null,
-                improveText: improveText || null,
-                tomorrowText: tomorrowText || null,
-            },
-        });
-
-        return NextResponse.json({ success: true });
+        return jsonResponse({ success: true, revision: log.revision });
     } catch (error) {
-        console.error('Daily log error:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 });
+        if (error instanceof DailyLogConflictError) {
+            return jsonResponse(
+                { error: '別の画面で日誌が更新されました。再読み込みして内容を確認してください' },
+                409,
+            );
+        }
+        console.error('Daily log save error:', error);
+        return jsonResponse({ error: '日誌を保存できませんでした' }, 500);
     }
 }

@@ -1,41 +1,37 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { STORY_QUESTIONS } from '@/lib/story-questions';
-import { formatJSTDisplay } from '@/lib/date';
+import { formatJSTDateTime } from '@/lib/date';
 import Nav from '@/components/Nav';
+
+export const metadata: Metadata = { title: '競泳物語' };
 
 export default async function StoryPage() {
     const user = await requireUser();
+    if (user.role === 'ADMIN') redirect('/admin/users');
 
-    if (user.role === 'ADMIN') {
-        redirect('/admin/users');
-    }
-
-    // Get latest story version with answers
     const latestStory = await prisma.storyVersion.findFirst({
         where: { userId: user.id },
         orderBy: { version: 'desc' },
-        include: { answers: true },
+        include: { answers: { orderBy: { questionNo: 'asc' } } },
     });
-
-    // Create answer map
-    const answerMap = new Map<number, string>();
-    if (latestStory) {
-        for (const answer of latestStory.answers) {
-            answerMap.set(answer.questionNo, answer.answerText);
-        }
-    }
+    const answerMap = new Map(latestStory?.answers.map((answer) => [answer.questionNo, answer.answerText]));
 
     return (
         <>
             <Nav userName={user.displayName} />
-            <div className="container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h1 className="page-title" style={{ marginBottom: 0 }}>私の競泳物語</h1>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <Link href="/story/edit" className="btn btn-primary">編集する</Link>
+            <main id="main-content" className="container container-narrow">
+                <div className="page-header">
+                    <div>
+                        <p className="eyebrow">My story</p>
+                        <h1 className="page-title">私の競泳物語</h1>
+                        <p className="muted">これまでの経験と、これから目指す自分を言葉にした記録です。</p>
+                    </div>
+                    <div className="button-row">
+                        <Link href="/story/edit" className="btn btn-primary">更新する</Link>
                         <Link href="/story/history" className="btn btn-secondary">履歴</Link>
                     </div>
                 </div>
@@ -43,32 +39,28 @@ export default async function StoryPage() {
                 {latestStory ? (
                     <>
                         <div className="alert alert-info">
-                            バージョン {latestStory.version} （{formatJSTDisplay(latestStory.createdAt)}）
-                            {latestStory.note && <span> - {latestStory.note}</span>}
+                            Ver.{latestStory.version}・{formatJSTDateTime(latestStory.createdAt)}
+                            {latestStory.note && <span>・{latestStory.note}</span>}
                         </div>
 
-                        {STORY_QUESTIONS.map((q) => (
-                            <div key={q.no} className="card">
-                                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                                    Q{q.no}. {q.label}
-                                </h3>
+                        {STORY_QUESTIONS.map((question) => (
+                            <section key={question.no} className="card" aria-labelledby={`question-${question.no}`}>
+                                <h2 id={`question-${question.no}`} className="question-title">
+                                    Q{question.no}. {question.label}
+                                </h2>
                                 <p style={{ whiteSpace: 'pre-wrap' }}>
-                                    {answerMap.get(q.no) || <span style={{ color: 'var(--secondary)' }}>未回答</span>}
+                                    {answerMap.get(question.no) || <span className="muted">未回答</span>}
                                 </p>
-                            </div>
+                            </section>
                         ))}
                     </>
                 ) : (
-                    <div className="card">
-                        <p style={{ textAlign: 'center', color: 'var(--secondary)' }}>
-                            まだ物語が作成されていません
-                        </p>
-                        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-                            <Link href="/story/edit" className="btn btn-primary">物語を書き始める</Link>
-                        </div>
+                    <div className="card empty-state">
+                        <p>物語はまだ始まっていません。</p>
+                        <Link href="/story/edit" className="btn btn-primary">最初の物語を書く</Link>
                     </div>
                 )}
-            </div>
+            </main>
         </>
     );
 }

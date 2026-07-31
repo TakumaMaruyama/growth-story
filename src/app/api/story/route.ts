@@ -1,68 +1,106 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { jsonResponse, readJsonObject } from '@/lib/request';
+import { parseStoryInput } from '@/lib/validation';
+import { MAX_STORY_VERSIONS } from '@/lib/limits';
+import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
+import {
+    saveStoryVersion,
+    StoryLimitError,
+    StoryVersionConflictError,
+} from '@/lib/story-service';
+
+const STORY_WRITE_WINDOW_MS = 60 * 60 * 1000;
 
 export async function GET() {
     const user = await getCurrentUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get latest story version with answers
-    const story = await prisma.storyVersion.findFirst({
-        where: { userId: user.id },
-        orderBy: { version: 'desc' },
-        include: { answers: true },
-    });
-
-    return NextResponse.json({
-        user: { displayName: user.displayName },
-        story,
-    });
-}
-
-export async function POST(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
 
     try {
-        const { answers, note } = await request.json();
-
-        // answers is { questionNo: answerText }
-        if (!answers || typeof answers !== 'object') {
-            return NextResponse.json({ error: '回答データが不正です' }, { status: 400 });
-        }
-
-        // Get current max version
-        const latestVersion = await prisma.storyVersion.findFirst({
+        const story = await prisma.storyVersion.findFirst({
             where: { userId: user.id },
             orderBy: { version: 'desc' },
-        });
-
-        const newVersion = (latestVersion?.version ?? 0) + 1;
-
-        // Create new story version with answers
-        await prisma.storyVersion.create({
-            data: {
-                userId: user.id,
-                version: newVersion,
-                note: note || null,
+            select: {
+                version: true,
                 answers: {
-                    create: Object.entries(answers)
-                        .filter(([, text]) => text && (text as string).trim() !== '')
-                        .map(([qNo, text]) => ({
-                            questionNo: parseInt(qNo),
-                            answerText: text as string,
-                        })),
+                    orderBy: { questionNo: 'asc' },
+                    select: { questionNo: true, answerText: true },
                 },
             },
         });
 
-        return NextResponse.json({ success: true, version: newVersion });
+        return jsonResponse({
+            user: { id: user.id, displayName: user.displayName },
+            story,
+        });
     } catch (error) {
+        console.error('Story read error:', error);
+        return jsonResponse({ error: '競泳物語を読み込めませんでした' }, 500);
+    }
+}
+
+export async function POST(request: NextRequest) {
+    const user = await getCurrentUser();
+    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+
+    try {
+        const rules: RateLimitRule[] = [
+            {
+                namespace: 'story-write-user',
+                identifier: user.id,
+                maxAttempts: 60,
+                windowMs: STORY_WRITE_WINDOW_MS,
+            },
+            {
+                namespace: 'story-write-global',
+                identifier: 'all',
+                maxAttempts: 5_000,
+                windowMs: STORY_WRITE_WINDOW_MS,
+            },
+        ];
+        const rateLimit = await consumeRateLimits(rules);
+        if (!rateLimit.allowed) {
+            const response = jsonResponse(
+                { error: '保存回数が多すぎます。しばらく待ってから再度お試しください' },
+                429,
+            );
+            response.headers.set('Retry-After', String(rateLimit.retryAfterSeconds));
+            return response;
+        }
+
+        const json = await readJsonObject(request);
+        if (!json.ok) return json.response;
+        const input = parseStoryInput(json.data);
+        if (!input.ok) return jsonResponse({ error: input.error }, 400);
+
+        const result = await saveStoryVersion(user.id, input.value);
+        return jsonResponse({ success: true, ...result });
+    } catch (error) {
+        if (error instanceof StoryVersionConflictError) {
+            return jsonResponse({
+                error: '別のタブで競泳物語が更新されています。最新の内容を読み込んでから編集し直してください',
+                code: 'STORY_VERSION_CONFLICT',
+                currentVersion: error.currentVersion,
+            }, 409);
+        }
+        if (error instanceof StoryLimitError) {
+            return jsonResponse(
+                { error: `物語の保存上限（${MAX_STORY_VERSIONS}件）に達しました` },
+                409,
+            );
+        }
+        if (error instanceof Prisma.PrismaClientKnownRequestError
+            && (error.code === 'P2002' || error.code === 'P2034')) {
+            return jsonResponse({
+                error: '同時に更新されました。最新の内容を読み込んでから編集し直してください',
+                code: 'STORY_VERSION_CONFLICT',
+            }, 409);
+        }
         console.error('Story save error:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 });
+        return jsonResponse({ error: '競泳物語を保存できませんでした' }, 500);
     }
 }

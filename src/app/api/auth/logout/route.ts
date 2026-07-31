@@ -1,15 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { logout } from '@/lib/auth';
+import { jsonResponse, validateRequestOrigin } from '@/lib/request';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+    const originError = validateRequestOrigin(request);
+    if (originError) return originError;
+
     try {
         await logout();
-        return NextResponse.json({ success: true });
+        return jsonResponse({ success: true });
     } catch (error) {
         console.error('Logout error:', error);
-        return NextResponse.json(
-            { error: 'サーバーエラーが発生しました' },
-            { status: 500 }
-        );
+        return jsonResponse({ error: 'ログアウト処理を完了できませんでした' }, 500);
     }
 }

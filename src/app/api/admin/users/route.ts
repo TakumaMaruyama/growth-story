@@ -1,71 +1,81 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, hashPassword } from '@/lib/auth';
+import { jsonResponse, readJsonObject } from '@/lib/request';
+import { parseAccountInput } from '@/lib/validation';
 
-export async function GET() {
+const PAGE_SIZE = 50;
+
+export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
-    if (!user || user.role !== 'ADMIN') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (user.role !== 'ADMIN') return jsonResponse({ error: '権限がありません' }, 403);
+
+    const cursor = request.nextUrl.searchParams.get('cursor') || undefined;
+
+    try {
+        const users = await prisma.user.findMany({
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: PAGE_SIZE + 1,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            select: {
+                id: true,
+                loginId: true,
+                displayName: true,
+                role: true,
+                isActive: true,
+                createdAt: true,
+            },
+        });
+        const hasMore = users.length > PAGE_SIZE;
+        const page = hasMore ? users.slice(0, PAGE_SIZE) : users;
+
+        return jsonResponse({
+            adminUser: { displayName: user.displayName },
+            users: page,
+            nextCursor: hasMore ? page.at(-1)?.id ?? null : null,
+        });
+    } catch (error) {
+        console.error('User list error:', error);
+        return jsonResponse({ error: 'ユーザー一覧を読み込めませんでした' }, 500);
     }
-
-    const users = await prisma.user.findMany({
-        orderBy: { createdAt: 'desc' },
-        select: {
-            id: true,
-            loginId: true,
-            displayName: true,
-            role: true,
-            isActive: true,
-            createdAt: true,
-        },
-    });
-
-    return NextResponse.json({
-        adminUser: { displayName: user.displayName },
-        users,
-    });
 }
 
 export async function POST(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user || user.role !== 'ADMIN') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const admin = await getCurrentUser();
+    if (!admin) return jsonResponse({ error: '認証が必要です' }, 401);
+    if (admin.role !== 'ADMIN') return jsonResponse({ error: '権限がありません' }, 403);
 
     try {
-        const { loginId, displayName, password } = await request.json();
+        const json = await readJsonObject(request, 32 * 1024);
+        if (!json.ok) return json.response;
+        const input = parseAccountInput(json.data);
+        if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        if (!loginId || !displayName || !password) {
-            return NextResponse.json({ error: '全ての項目を入力してください' }, { status: 400 });
-        }
-
-        if (password.length < 6) {
-            return NextResponse.json({ error: 'パスワードは6文字以上で入力してください' }, { status: 400 });
-        }
-
-        // Check if login_id exists
-        const existing = await prisma.user.findUnique({
-            where: { loginId },
-        });
-
-        if (existing) {
-            return NextResponse.json({ error: 'このログインIDは既に使用されています' }, { status: 400 });
-        }
-
+        const { loginId, displayName, password } = input.value;
         const passwordHash = await hashPassword(password);
-
-        await prisma.user.create({
-            data: {
-                loginId,
-                displayName,
-                passwordHash,
-                role: 'USER',
-            },
+        const created = await prisma.$transaction(async (tx) => {
+            const target = await tx.user.create({
+                data: { loginId, displayName, passwordHash, role: 'USER' },
+                select: { id: true },
+            });
+            await tx.adminAuditEvent.create({
+                data: {
+                    actorId: admin.id,
+                    targetUserId: target.id,
+                    action: 'USER_CREATED',
+                },
+            });
+            return target;
         });
 
-        return NextResponse.json({ success: true });
+        return jsonResponse({ success: true, userId: created.id }, 201);
     } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            return jsonResponse({ error: 'このログインIDは既に使用されています' }, 409);
+        }
         console.error('User create error:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 });
+        return jsonResponse({ error: 'ユーザーを作成できませんでした' }, 500);
     }
 }

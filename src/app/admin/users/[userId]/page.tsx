@@ -13,116 +13,111 @@ export default async function AdminUserDetailPage({ params }: Props) {
     const admin = await requireAdmin();
     const { userId } = await params;
 
-    const targetUser = await prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-            growthProfile: true,
-            _count: {
-                select: {
-                    dailyLogs: true,
-                    storyVersions: true,
-                    growthMeasurements: true,
-                },
+    const [targetUser, latestStory, latestDailyLog] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                loginId: true,
+                displayName: true,
+                isActive: true,
+                createdAt: true,
+                _count: { select: { dailyLogs: true, storyVersions: true } },
             },
-        },
-    });
+        }),
+        prisma.storyVersion.findFirst({
+            where: { userId },
+            orderBy: { version: 'desc' },
+            select: { version: true, createdAt: true },
+        }),
+        prisma.dailyLog.findFirst({
+            where: { userId },
+            orderBy: { logDate: 'desc' },
+            select: { logDate: true, score: true, practiced: true },
+        }),
+    ]);
 
-    if (!targetUser) {
-        notFound();
-    }
-
-    // Get latest story
-    const latestStory = await prisma.storyVersion.findFirst({
-        where: { userId },
-        orderBy: { version: 'desc' },
-    });
-
-    // Get latest measurement
-    const latestMeasurement = await prisma.growthMeasurement.findFirst({
-        where: { userId },
-        orderBy: { measuredOn: 'desc' },
-    });
+    if (!targetUser) notFound();
 
     return (
         <>
             <Nav userName={admin.displayName} isAdmin />
-            <div className="container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h1 className="page-title" style={{ marginBottom: 0 }}>ユーザー詳細</h1>
+            <main id="main-content" className="container">
+                <div className="page-header">
+                    <div>
+                        <p className="eyebrow">User details</p>
+                        <h1 className="page-title">{targetUser.displayName}</h1>
+                        <p className="muted">ユーザーの記録状況と最新データを確認します。</p>
+                    </div>
                     <Link href="/admin/users" className="btn btn-secondary">一覧に戻る</Link>
                 </div>
 
-                {/* User Info */}
-                <div className="card">
-                    <h2 className="section-title">👤 基本情報</h2>
-                    <p>ログインID: <strong>{targetUser.loginId}</strong></p>
-                    <p>表示名: <strong>{targetUser.displayName}</strong></p>
-                    <p>状態: <span className={`badge ${targetUser.isActive ? 'badge-primary' : 'badge-secondary'}`}>
-                        {targetUser.isActive ? '有効' : '無効'}
-                    </span></p>
-                    <p>登録日: {formatJSTDisplay(targetUser.createdAt)}</p>
+                <div className="summary-grid">
+                    <section className="card" aria-labelledby="profile-heading">
+                        <h2 id="profile-heading" className="section-title">基本情報</h2>
+                        <dl className="detail-list">
+                            <dt>ログインID</dt>
+                            <dd><strong>{targetUser.loginId}</strong></dd>
+                            <dt>表示名</dt>
+                            <dd><strong>{targetUser.displayName}</strong></dd>
+                            <dt>状態</dt>
+                            <dd>
+                                <span className={`badge ${targetUser.isActive ? 'badge-primary' : 'badge-secondary'}`}>
+                                    {targetUser.isActive ? '有効' : '無効'}
+                                </span>
+                            </dd>
+                            <dt>登録日</dt>
+                            <dd>{formatJSTDisplay(targetUser.createdAt)}</dd>
+                        </dl>
+                    </section>
+
+                    <section className="card" aria-labelledby="summary-heading">
+                        <h2 id="summary-heading" className="section-title">記録サマリー</h2>
+                        <div className="summary-grid">
+                            <div>
+                                <p className="summary-label">日誌</p>
+                                <p className="summary-value">{targetUser._count.dailyLogs}</p>
+                            </div>
+                            <div>
+                                <p className="summary-label">物語の更新</p>
+                                <p className="summary-value">{targetUser._count.storyVersions}</p>
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
-                {/* Summary */}
-                <div className="card">
-                    <h2 className="section-title">📊 サマリ</h2>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-                        <div>
-                            <p style={{ color: 'var(--secondary)', fontSize: '0.875rem' }}>日誌エントリ</p>
-                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{targetUser._count.dailyLogs}</p>
+                <section className="card" aria-labelledby="latest-heading">
+                    <h2 id="latest-heading" className="section-title">最新データ</h2>
+                    <div className="summary-grid">
+                        <div className="summary-item">
+                            <h3 className="question-title">練習日誌</h3>
+                            {latestDailyLog ? (
+                                <>
+                                    <p>{formatJSTDisplay(latestDailyLog.logDate)}</p>
+                                    <p className="muted">自己評価 {latestDailyLog.score}/10・練習{latestDailyLog.practiced ? 'あり' : 'なし'}</p>
+                                </>
+                            ) : <p className="muted">記録なし</p>}
                         </div>
-                        <div>
-                            <p style={{ color: 'var(--secondary)', fontSize: '0.875rem' }}>物語バージョン</p>
-                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{targetUser._count.storyVersions}</p>
-                        </div>
-                        <div>
-                            <p style={{ color: 'var(--secondary)', fontSize: '0.875rem' }}>測定回数</p>
-                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{targetUser._count.growthMeasurements}</p>
+                        <div className="summary-item">
+                            <h3 className="question-title">競泳物語</h3>
+                            {latestStory ? (
+                                <>
+                                    <p>Ver.{latestStory.version}</p>
+                                    <p className="muted">{formatJSTDisplay(latestStory.createdAt)} 更新</p>
+                                </>
+                            ) : <p className="muted">記録なし</p>}
                         </div>
                     </div>
-                </div>
+                </section>
 
-                {/* Latest Data */}
-                <div className="card">
-                    <h2 className="section-title">📝 最新データ</h2>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <strong>物語:</strong>
-                        {latestStory ? (
-                            <span> Ver.{latestStory.version} ({formatJSTDisplay(latestStory.createdAt)})</span>
-                        ) : (
-                            <span style={{ color: 'var(--secondary)' }}> なし</span>
-                        )}
-                    </div>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <strong>身長:</strong>
-                        {latestMeasurement ? (
-                            <span> {latestMeasurement.heightCm} cm ({formatJSTDisplay(latestMeasurement.measuredOn)})</span>
-                        ) : (
-                            <span style={{ color: 'var(--secondary)' }}> なし</span>
-                        )}
-                    </div>
-
-                    {targetUser.growthProfile && (
-                        <div>
-                            <strong>プロフィール:</strong>
-                            <span> {targetUser.growthProfile.sex === 'MALE' ? '男子' : '女子'}</span>
-                            <span>, 生年月日: {formatJSTDisplay(targetUser.growthProfile.birthDate)}</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Links to detail pages */}
-                <div className="card">
-                    <h2 className="section-title">🔗 詳細閲覧</h2>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">物語履歴</Link>
+                <section className="card" aria-labelledby="details-heading">
+                    <h2 id="details-heading" className="section-title">詳細を見る</h2>
+                    <div className="button-row">
                         <Link href={`/admin/users/${userId}/daily`} className="btn btn-secondary">日誌一覧</Link>
-                        <Link href={`/admin/users/${userId}/growth`} className="btn btn-secondary">成長記録</Link>
+                        <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">物語履歴</Link>
                     </div>
-                </div>
-            </div>
+                </section>
+            </main>
         </>
     );
 }
