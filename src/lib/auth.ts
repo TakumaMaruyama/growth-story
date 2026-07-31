@@ -17,7 +17,9 @@ export async function createSession(userId: string): Promise<string> {
 
     await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`
-            SELECT pg_advisory_xact_lock(hashtextextended(${`session:${userId}`}, 0))
+            SELECT pg_advisory_xact_lock(
+                hashtextextended(${`session:${userId}`}, 0)
+            )::text AS lock_result
         `;
         await tx.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
 

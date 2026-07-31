@@ -71,7 +71,9 @@ export async function consumeRateLimits(rules: RateLimitRule[]): Promise<RateLim
   return prisma.$transaction(async (tx) => {
     for (const keyHash of lockKeys) {
       await tx.$queryRaw`
-        SELECT pg_advisory_xact_lock(hashtextextended(${keyHash}, 0))
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${keyHash}, 0)
+        )::text AS lock_result
       `;
     }
 
