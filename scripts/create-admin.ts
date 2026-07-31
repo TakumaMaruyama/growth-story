@@ -1,7 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import bcrypt from 'bcrypt';
 import { Pool } from 'pg';
+import { hashPassword } from '../src/lib/password';
+import { parseAccountInput } from '../src/lib/validation';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -25,31 +26,35 @@ async function main() {
         process.exit(1);
     }
 
-    if (password.length < 6) {
-        console.error('Error: Password must be at least 6 characters.');
+    const input = parseAccountInput({ loginId, displayName, password });
+    if (!input.ok) {
+        console.error(`Error: ${input.error}`);
         process.exit(1);
     }
+    const normalized = input.value;
 
     // Check if already exists
     const existing = await prisma.user.findUnique({
-        where: { loginId },
+        where: { loginId: normalized.loginId },
+        select: { id: true },
     });
 
     if (existing) {
-        console.error(`Error: User with login_id "${loginId}" already exists.`);
+        console.error(`Error: User with login_id "${normalized.loginId}" already exists.`);
         process.exit(1);
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await hashPassword(normalized.password);
 
     const admin = await prisma.user.create({
         data: {
-            loginId,
-            displayName,
+            loginId: normalized.loginId,
+            displayName: normalized.displayName,
             passwordHash,
             role: 'ADMIN',
             isActive: true,
         },
+        select: { loginId: true, displayName: true, role: true },
     });
 
     console.log('✅ Admin user created successfully!');

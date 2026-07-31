@@ -15,7 +15,7 @@ if (!databaseUrl) {
 
 function createPrismaClient() {
   const pool = new Pool({ connectionString: databaseUrl });
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg(pool, { disposeExternalPool: true });
   const prisma = new PrismaClient({ adapter });
   return { prisma, pool };
 }

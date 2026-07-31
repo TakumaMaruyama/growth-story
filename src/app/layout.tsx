@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "身長予測 & 私の競泳物語",
-  description: "成長記録と競泳日誌の管理アプリ",
+  title: {
+    default: "私の競泳物語",
+    template: "%s | 私の競泳物語",
+  },
+  description: "日々の練習と競泳人生を、自分の言葉で記録するアプリ",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
@@ -19,7 +17,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={`${geistSans.variable} antialiased`}>
+      <body>
+        <a className="skip-link" href="#main-content">本文へ移動</a>
         {children}
       </body>
     </html>

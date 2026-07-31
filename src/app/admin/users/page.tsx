@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
+import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
 
 interface UserInfo {
     displayName: string;
@@ -13,208 +14,343 @@ interface UserListItem {
     id: string;
     loginId: string;
     displayName: string;
-    role: string;
+    role: 'USER' | 'ADMIN';
     isActive: boolean;
     createdAt: string;
+}
+
+interface UserPage {
+    adminUser: UserInfo;
+    users: UserListItem[];
+    nextCursor: string | null;
+    error?: string;
 }
 
 export default function AdminUsersPage() {
     const router = useRouter();
     const [adminUser, setAdminUser] = useState<UserInfo | null>(null);
     const [users, setUsers] = useState<UserListItem[]>([]);
+    const [nextCursor, setNextCursor] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [loadError, setLoadError] = useState('');
+    const [retryCursor, setRetryCursor] = useState<string | null>(null);
+    const [retryAppend, setRetryAppend] = useState(false);
 
-    // Create user form
     const [loginId, setLoginId] = useState('');
     const [displayName, setDisplayName] = useState('');
     const [password, setPassword] = useState('');
+    const [passwordConfirmation, setPasswordConfirmation] = useState('');
     const [creating, setCreating] = useState(false);
     const [createMessage, setCreateMessage] = useState('');
     const [createError, setCreateError] = useState('');
+    const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
+    const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
 
-    const fetchUsers = async () => {
+    const redirectForAuthorization = useCallback((status: number) => {
+        if (status === 401) {
+            router.replace('/admin/login');
+            return true;
+        }
+        if (status === 403) {
+            router.replace('/');
+            return true;
+        }
+        return false;
+    }, [router]);
+
+    const fetchUsers = useCallback(async (cursor?: string, append = false) => {
+        if (append) setLoadingMore(true);
+        else setLoading(true);
+        setLoadError('');
         try {
-            const res = await fetch('/api/admin/users');
-            if (res.ok) {
-                const data = await res.json();
-                setAdminUser(data.adminUser);
-                setUsers(data.users);
-            } else if (res.status === 401 || res.status === 403) {
-                router.push('/login');
+            const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+            const response = await fetch(`/api/admin/users${query}`, { cache: 'no-store' });
+            const data = await response.json().catch(() => null) as UserPage | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok || !data) {
+                setLoadError(data?.error ?? 'ユーザー一覧を読み込めませんでした');
+                setRetryCursor(cursor ?? null);
+                setRetryAppend(append);
+                return;
             }
+            setAdminUser(data.adminUser);
+            setUsers((current) => append ? [...current, ...data.users] : data.users);
+            setNextCursor(data.nextCursor);
         } catch {
-            setError('データの取得に失敗しました');
+            setLoadError('通信を確認して、もう一度お試しください');
+            setRetryCursor(cursor ?? null);
+            setRetryAppend(append);
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
-    };
+    }, [redirectForAuthorization]);
 
     useEffect(() => {
-        fetchUsers();
-    }, []);
+        const timeout = window.setTimeout(() => void fetchUsers(), 0);
+        return () => window.clearTimeout(timeout);
+    }, [fetchUsers]);
 
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setCreating(true);
+    const handleCreate = async (event: React.FormEvent) => {
+        event.preventDefault();
         setCreateError('');
         setCreateMessage('');
+        if (password !== passwordConfirmation) {
+            setCreateError('初期パスワードと確認用パスワードが一致しません');
+            return;
+        }
+        setCreating(true);
 
         try {
-            const res = await fetch('/api/admin/users', {
+            const response = await fetch('/api/admin/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ loginId, displayName, password }),
             });
-
-            if (res.ok) {
-                setCreateMessage('ユーザーを作成しました');
-                setLoginId('');
-                setDisplayName('');
-                setPassword('');
-                fetchUsers();
-            } else {
-                const data = await res.json();
-                setCreateError(data.error || '作成に失敗しました');
+            const data = await response.json().catch(() => null) as { error?: string } | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok) {
+                setCreateError(data?.error ?? 'ユーザーを作成できませんでした');
+                return;
             }
+            setCreateMessage('ユーザーを作成しました');
+            setLoginId('');
+            setDisplayName('');
+            setPassword('');
+            setPasswordConfirmation('');
+            await fetchUsers();
         } catch {
-            setCreateError('通信エラーが発生しました');
+            setCreateError('通信を確認して、もう一度お試しください');
         } finally {
             setCreating(false);
         }
     };
 
-    const toggleActive = async (userId: string, isActive: boolean) => {
+    const toggleActive = async (target: UserListItem) => {
+        const nextState = !target.isActive;
+        if (!nextState && !window.confirm(
+            `${target.displayName}さんを無効化しますか？\nこのユーザーのログイン中セッションはすべて終了します。`,
+        )) return;
+
+        setPendingUserIds((current) => new Set(current).add(target.id));
+        setToggleErrors((current) => {
+            const next = { ...current };
+            delete next[target.id];
+            return next;
+        });
         try {
-            const res = await fetch(`/api/admin/users/${userId}/toggle`, {
+            const response = await fetch(`/api/admin/users/${target.id}/toggle`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isActive: !isActive }),
+                body: JSON.stringify({ isActive: nextState }),
             });
-
-            if (res.ok) {
-                fetchUsers();
+            const data = await response.json().catch(() => null) as { error?: string } | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok) {
+                setToggleErrors((current) => ({
+                    ...current,
+                    [target.id]: data?.error ?? 'ユーザー状態を変更できませんでした',
+                }));
+                return;
             }
+            setUsers((current) => current.map((user) => (
+                user.id === target.id ? { ...user, isActive: nextState } : user
+            )));
         } catch {
-            console.error('Toggle failed');
+            setToggleErrors((current) => ({
+                ...current,
+                [target.id]: '通信を確認して、もう一度お試しください',
+            }));
+        } finally {
+            setPendingUserIds((current) => {
+                const next = new Set(current);
+                next.delete(target.id);
+                return next;
+            });
         }
     };
-
-    if (loading) {
-        return (
-            <>
-                <Nav userName={adminUser?.displayName} isAdmin />
-                <div className="container">
-                    <p>読み込み中...</p>
-                </div>
-            </>
-        );
-    }
 
     return (
         <>
             <Nav userName={adminUser?.displayName} isAdmin />
-            <div className="container">
-                <h1 className="page-title">ユーザー管理</h1>
+            <main id="main-content" className="container">
+                <div className="page-header">
+                    <div>
+                        <p className="eyebrow">Administration</p>
+                        <h1 className="page-title">ユーザー管理</h1>
+                        <p className="muted">アカウントの作成と利用状態を管理します。</p>
+                    </div>
+                </div>
 
-                {error && <p className="error-message">{error}</p>}
-
-                {/* Create User Form */}
-                <div className="card">
-                    <h2 className="section-title">新規ユーザー作成</h2>
+                <section className="card" aria-labelledby="create-user-heading">
+                    <h2 id="create-user-heading" className="section-title">新規ユーザー作成</h2>
                     <form onSubmit={handleCreate}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
+                        <div className="summary-grid">
+                            <div className="form-group">
                                 <label htmlFor="loginId" className="form-label">ログインID</label>
                                 <input
                                     type="text"
                                     id="loginId"
                                     className="form-input"
                                     value={loginId}
-                                    onChange={(e) => setLoginId(e.target.value)}
+                                    onChange={(event) => setLoginId(event.target.value)}
                                     required
+                                    minLength={3}
+                                    maxLength={64}
+                                    autoComplete="off"
+                                    disabled={creating}
                                 />
                             </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
+                            <div className="form-group">
                                 <label htmlFor="displayName" className="form-label">表示名</label>
                                 <input
                                     type="text"
                                     id="displayName"
                                     className="form-input"
                                     value={displayName}
-                                    onChange={(e) => setDisplayName(e.target.value)}
+                                    onChange={(event) => setDisplayName(event.target.value)}
                                     required
+                                    maxLength={80}
+                                    autoComplete="off"
+                                    disabled={creating}
                                 />
                             </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
+                            <div className="form-group">
                                 <label htmlFor="password" className="form-label">初期パスワード</label>
                                 <input
                                     type="password"
                                     id="password"
                                     className="form-input"
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    onChange={(event) => setPassword(event.target.value)}
                                     required
-                                    minLength={6}
+                                    minLength={MIN_PASSWORD_LENGTH}
+                                    autoComplete="new-password"
+                                    disabled={creating}
+                                />
+                                <p className="form-help">{MIN_PASSWORD_LENGTH}文字以上</p>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="passwordConfirmation" className="form-label">初期パスワード（確認）</label>
+                                <input
+                                    type="password"
+                                    id="passwordConfirmation"
+                                    className="form-input"
+                                    value={passwordConfirmation}
+                                    onChange={(event) => setPasswordConfirmation(event.target.value)}
+                                    required
+                                    minLength={MIN_PASSWORD_LENGTH}
+                                    autoComplete="new-password"
+                                    disabled={creating}
+                                    aria-invalid={Boolean(createError && password !== passwordConfirmation)}
                                 />
                             </div>
                         </div>
-                        {createMessage && <p className="success-message" style={{ marginTop: '0.5rem' }}>{createMessage}</p>}
-                        {createError && <p className="error-message" style={{ marginTop: '0.5rem' }}>{createError}</p>}
-                        <button type="submit" className="btn btn-primary" style={{ marginTop: '1rem' }} disabled={creating}>
-                            {creating ? '作成中...' : 'ユーザーを作成'}
+                        <div aria-live="polite">
+                            {createMessage && <p className="success-message">{createMessage}</p>}
+                            {createError && <p className="error-message" role="alert">{createError}</p>}
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={creating}>
+                            {creating ? '作成中…' : 'ユーザーを作成'}
                         </button>
                     </form>
-                </div>
+                </section>
 
-                {/* Users List */}
-                <div className="card">
-                    <h2 className="section-title">ユーザー一覧</h2>
-                    {users.length > 0 ? (
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>ログインID</th>
-                                    <th>表示名</th>
-                                    <th>状態</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {users.map((u) => (
-                                    <tr key={u.id}>
-                                        <td>{u.loginId}</td>
-                                        <td>{u.displayName}</td>
-                                        <td>
-                                            <span className={`badge ${u.isActive ? 'badge-primary' : 'badge-secondary'}`}>
-                                                {u.isActive ? '有効' : '無効'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                                <Link href={`/admin/users/${u.id}`} className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
-                                                    詳細
-                                                </Link>
-                                                {u.role !== 'ADMIN' && (
-                                                    <button
-                                                        onClick={() => toggleActive(u.id, u.isActive)}
-                                                        className={`btn ${u.isActive ? 'btn-danger' : 'btn-primary'}`}
-                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
-                                                    >
-                                                        {u.isActive ? '無効化' : '有効化'}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <p style={{ color: 'var(--secondary)' }}>ユーザーがいません</p>
+                <section className="card" aria-labelledby="users-heading">
+                    <h2 id="users-heading" className="section-title">ユーザー一覧</h2>
+                    {loadError && (
+                        <div className="alert alert-danger" role="alert">
+                            <p>{loadError}</p>
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-small"
+                                onClick={() => void fetchUsers(retryCursor ?? undefined, retryAppend)}
+                                disabled={loading || loadingMore}
+                            >
+                                再試行
+                            </button>
+                        </div>
                     )}
-                </div>
-            </div>
+                    {loading ? (
+                        <div className="loading-state" role="status">読み込み中…</div>
+                    ) : users.length > 0 ? (
+                        <>
+                            <div className="table-wrap">
+                                <table className="table">
+                                    <caption className="visually-hidden">登録ユーザー</caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">ログインID</th>
+                                            <th scope="col">表示名</th>
+                                            <th scope="col">状態</th>
+                                            <th scope="col">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {users.map((target) => (
+                                            <tr key={target.id}>
+                                                <td>{target.loginId}</td>
+                                                <td>{target.displayName}</td>
+                                                <td>
+                                                    <span className={`badge ${target.isActive ? 'badge-primary' : 'badge-secondary'}`}>
+                                                        {target.isActive ? '有効' : '無効'}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div className="button-row">
+                                                        <Link
+                                                            href={`/admin/users/${target.id}`}
+                                                            className="btn btn-secondary btn-small"
+                                                            aria-label={`${target.displayName}さんの詳細を見る`}
+                                                        >
+                                                            詳細
+                                                        </Link>
+                                                        {target.role !== 'ADMIN' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void toggleActive(target)}
+                                                                className={`btn ${target.isActive ? 'btn-danger' : 'btn-primary'} btn-small`}
+                                                                disabled={pendingUserIds.has(target.id)}
+                                                                aria-label={`${target.displayName}さんを${target.isActive ? '無効化' : '有効化'}`}
+                                                                aria-describedby={toggleErrors[target.id] ? `toggle-error-${target.id}` : undefined}
+                                                            >
+                                                                {pendingUserIds.has(target.id) ? '処理中…' : target.isActive ? '無効化' : '有効化'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {toggleErrors[target.id] && (
+                                                        <p
+                                                            id={`toggle-error-${target.id}`}
+                                                            className="error-message"
+                                                            role="alert"
+                                                        >
+                                                            {toggleErrors[target.id]}
+                                                        </p>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {nextCursor && (
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ marginTop: '1rem' }}
+                                    onClick={() => void fetchUsers(nextCursor, true)}
+                                    disabled={loadingMore}
+                                >
+                                    {loadingMore ? '読み込み中…' : 'さらに表示'}
+                                </button>
+                            )}
+                        </>
+                    ) : !loadError ? (
+                        <p className="empty-state">ユーザーがいません。</p>
+                    ) : null}
+                </section>
+            </main>
         </>
     );
 }

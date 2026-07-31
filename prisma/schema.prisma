@@ -20,11 +20,11 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  sessions          Session[]
-  dailyLogs         DailyLog[]
-  storyVersions     StoryVersion[]
-  growthProfile     GrowthProfile?
-  growthMeasurements GrowthMeasurement[]
+  sessions      Session[]
+  dailyLogs     DailyLog[]
+  storyVersions StoryVersion[]
+  adminActions  AdminAuditEvent[] @relation("AdminAuditActor")
+  auditTargets  AdminAuditEvent[] @relation("AdminAuditTarget")
 
   @@map("users")
 }
@@ -37,14 +37,14 @@ enum Role {
 model Session {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
-  token     String   @unique
+  tokenHash String   @unique @map("token_hash")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([token])
   @@index([expiresAt])
+  @@index([userId])
   @@map("sessions")
 }
 
@@ -54,6 +54,7 @@ model DailyLog {
   logDate      DateTime @map("log_date") @db.Date
   score        Int      // 1-10
   practiced    Boolean  @default(false)
+  revision     Int      @default(1)
   goodText     String?  @map("good_text") @db.Text
   improveText  String?  @map("improve_text") @db.Text
   tomorrowText String?  @map("tomorrow_text") @db.Text
@@ -94,38 +95,27 @@ model StoryAnswer {
   @@map("story_answers")
 }
 
-model GrowthProfile {
-  id             String    @id @default(uuid())
-  userId         String    @unique @map("user_id")
-  sex            Sex
-  birthDate      DateTime  @map("birth_date") @db.Date
-  fatherHeightCm Float?    @map("father_height_cm")
-  motherHeightCm Float?    @map("mother_height_cm")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+model RateLimitEvent {
+  id        String   @id @default(uuid())
+  keyHash   String   @map("key_hash")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("growth_profiles")
+  @@index([keyHash, createdAt])
+  @@index([createdAt])
+  @@map("rate_limit_events")
 }
 
-enum Sex {
-  MALE
-  FEMALE
-}
+model AdminAuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String   @map("actor_id")
+  targetUserId String?  @map("target_user_id")
+  action       String
+  createdAt    DateTime @default(now()) @map("created_at")
 
-model GrowthMeasurement {
-  id              String   @id @default(uuid())
-  userId          String   @map("user_id")
-  measuredOn      DateTime @map("measured_on") @db.Date
-  heightCm        Float    @map("height_cm")
-  weightKg        Float?   @map("weight_kg")
-  sittingHeightCm Float?   @map("sitting_height_cm")
-  createdAt       DateTime @default(now()) @map("created_at")
+  actor      User  @relation("AdminAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  targetUser User? @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, measuredOn])
-  @@index([userId, measuredOn(sort: Desc)])
-  @@map("growth_measurements")
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([targetUserId, createdAt(sort: Desc)])
+  @@map("admin_audit_events")
 }

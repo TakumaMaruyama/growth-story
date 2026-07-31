@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -13,120 +14,124 @@ export default function RegisterPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         setError('');
-
         if (password !== confirmPassword) {
-            setError('パスワード確認が一致しません');
+            setError('確認用パスワードが一致しません');
             return;
         }
 
         setLoading(true);
         try {
-            const res = await fetch('/api/auth/register', {
+            const response = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ loginId, displayName, password }),
             });
-
-            const data = await res.json();
-            if (!res.ok) {
-                setError(data.error || '登録に失敗しました');
+            const data = await response.json().catch(() => null) as { error?: string } | null;
+            if (!response.ok) {
+                setError(data?.error ?? 'アカウントを作成できませんでした');
                 return;
             }
-
-            router.push('/');
+            router.replace('/');
+            router.refresh();
         } catch {
-            setError('通信エラーが発生しました');
+            setError('通信を確認して、もう一度お試しください');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="container" style={{ maxWidth: '460px', marginTop: '4rem' }}>
-            <div className="card">
-                <h1 className="page-title" style={{ textAlign: 'center' }}>
-                    新規登録
-                </h1>
-                <p style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--secondary)' }}>
-                    利用者アカウントを作成します
-                </p>
+        <main id="main-content" className="auth-shell">
+            <div className="auth-card">
+                <div className="auth-brand">
+                    <span className="brand-mark" aria-hidden="true">S</span>
+                    <p className="eyebrow" style={{ marginTop: '0.75rem' }}>Join</p>
+                    <h1 className="page-title">アカウントを作る</h1>
+                    <p className="muted">あなた自身の練習日誌と競泳物語を始めましょう。</p>
+                </div>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="form-group">
-                        <label htmlFor="loginId" className="form-label">ログインID</label>
-                        <input
-                            type="text"
-                            id="loginId"
-                            className="form-input"
-                            value={loginId}
-                            onChange={(e) => setLoginId(e.target.value)}
-                            required
-                            autoComplete="username"
-                        />
+                <div className="card">
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label htmlFor="loginId" className="form-label">ログインID</label>
+                            <input
+                                type="text"
+                                id="loginId"
+                                className="form-input"
+                                value={loginId}
+                                onChange={(event) => setLoginId(event.target.value)}
+                                required
+                                minLength={3}
+                                maxLength={64}
+                                autoComplete="username"
+                                disabled={loading}
+                                aria-describedby="login-id-help"
+                            />
+                            <p id="login-id-help" className="form-help">3〜64文字。文字・数字・「.」「-」「_」が使えます。</p>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="displayName" className="form-label">表示名</label>
+                            <input
+                                type="text"
+                                id="displayName"
+                                className="form-input"
+                                value={displayName}
+                                onChange={(event) => setDisplayName(event.target.value)}
+                                required
+                                maxLength={80}
+                                autoComplete="nickname"
+                                disabled={loading}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="password" className="form-label">パスワード</label>
+                            <input
+                                type="password"
+                                id="password"
+                                className="form-input"
+                                value={password}
+                                onChange={(event) => setPassword(event.target.value)}
+                                required
+                                minLength={MIN_PASSWORD_LENGTH}
+                                autoComplete="new-password"
+                                disabled={loading}
+                                aria-describedby="password-help"
+                            />
+                            <p id="password-help" className="form-help">{MIN_PASSWORD_LENGTH}文字以上で設定してください。</p>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="confirmPassword" className="form-label">パスワード（確認）</label>
+                            <input
+                                type="password"
+                                id="confirmPassword"
+                                className="form-input"
+                                value={confirmPassword}
+                                onChange={(event) => setConfirmPassword(event.target.value)}
+                                required
+                                minLength={MIN_PASSWORD_LENGTH}
+                                autoComplete="new-password"
+                                disabled={loading}
+                            />
+                        </div>
+
+                        {error && <p className="error-message" role="alert">{error}</p>}
+
+                        <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+                            {loading ? '作成中…' : 'アカウントを作成'}
+                        </button>
+                    </form>
+
+                    <div className="auth-links">
+                        <Link href="/login">ログインへ戻る</Link>
                     </div>
-
-                    <div className="form-group">
-                        <label htmlFor="displayName" className="form-label">表示名</label>
-                        <input
-                            type="text"
-                            id="displayName"
-                            className="form-input"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
-                            required
-                            autoComplete="nickname"
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="password" className="form-label">パスワード</label>
-                        <input
-                            type="password"
-                            id="password"
-                            className="form-input"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            minLength={6}
-                            autoComplete="new-password"
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="confirmPassword" className="form-label">パスワード確認</label>
-                        <input
-                            type="password"
-                            id="confirmPassword"
-                            className="form-input"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            required
-                            minLength={6}
-                            autoComplete="new-password"
-                        />
-                    </div>
-
-                    {error && <p className="error-message">{error}</p>}
-
-                    <button
-                        type="submit"
-                        className="btn btn-primary"
-                        style={{ width: '100%', marginTop: '1rem' }}
-                        disabled={loading}
-                    >
-                        {loading ? '登録中...' : '登録する'}
-                    </button>
-                </form>
-
-                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                    <Link href="/login" style={{ fontSize: '0.875rem', color: 'var(--secondary)' }}>
-                        ログイン画面に戻る
-                    </Link>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

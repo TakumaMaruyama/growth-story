@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { STORY_QUESTIONS } from '@/lib/story-questions';
-import { formatJSTDisplay } from '@/lib/date';
+import { formatJSTDateTime } from '@/lib/date';
 import Nav from '@/components/Nav';
 
 interface Props {
@@ -14,56 +14,48 @@ export default async function AdminUserStoryVersionPage({ params }: Props) {
     const admin = await requireAdmin();
     const { userId, versionId } = await params;
 
-    const targetUser = await prisma.user.findUnique({
-        where: { id: userId },
-    });
+    const [targetUser, storyVersion] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: { displayName: true },
+        }),
+        prisma.storyVersion.findFirst({
+            where: { id: versionId, userId },
+            include: { answers: { orderBy: { questionNo: 'asc' } } },
+        }),
+    ]);
+    if (!targetUser || !storyVersion) notFound();
 
-    if (!targetUser) {
-        notFound();
-    }
-
-    const storyVersion = await prisma.storyVersion.findUnique({
-        where: { id: versionId },
-        include: { answers: true },
-    });
-
-    if (!storyVersion || storyVersion.userId !== userId) {
-        notFound();
-    }
-
-    // Create answer map
-    const answerMap = new Map<number, string>();
-    for (const answer of storyVersion.answers) {
-        answerMap.set(answer.questionNo, answer.answerText);
-    }
+    const answerMap = new Map(storyVersion.answers.map((answer) => [answer.questionNo, answer.answerText]));
 
     return (
         <>
             <Nav userName={admin.displayName} isAdmin />
-            <div className="container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h1 className="page-title" style={{ marginBottom: 0 }}>
-                        {targetUser.displayName}の物語 Ver.{storyVersion.version}
-                    </h1>
+            <main id="main-content" className="container container-narrow">
+                <div className="page-header">
+                    <div>
+                        <p className="eyebrow">Archived story</p>
+                        <h1 className="page-title">{targetUser.displayName}・Ver.{storyVersion.version}</h1>
+                    </div>
                     <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">履歴に戻る</Link>
                 </div>
 
                 <div className="alert alert-info">
-                    作成日: {formatJSTDisplay(storyVersion.createdAt)}
-                    {storyVersion.note && <span> - {storyVersion.note}</span>}
+                    {formatJSTDateTime(storyVersion.createdAt)}
+                    {storyVersion.note && <span>・{storyVersion.note}</span>}
                 </div>
 
-                {STORY_QUESTIONS.map((q) => (
-                    <div key={q.no} className="card">
-                        <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                            Q{q.no}. {q.label}
-                        </h3>
+                {STORY_QUESTIONS.map((question) => (
+                    <section key={question.no} className="card" aria-labelledby={`question-${question.no}`}>
+                        <h2 id={`question-${question.no}`} className="question-title">
+                            Q{question.no}. {question.label}
+                        </h2>
                         <p style={{ whiteSpace: 'pre-wrap' }}>
-                            {answerMap.get(q.no) || <span style={{ color: 'var(--secondary)' }}>未回答</span>}
+                            {answerMap.get(question.no) || <span className="muted">未回答</span>}
                         </p>
-                    </div>
+                    </section>
                 ))}
-            </div>
+            </main>
         </>
     );
 }
