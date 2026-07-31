@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Replit mounts editor tooling and skill templates here. They are not
+    // application source and must not affect repository lint results.
+    ".local/**",
   ]),
 ]);
 
