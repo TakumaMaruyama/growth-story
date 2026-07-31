@@ -18,7 +18,12 @@ export function validateRequestOrigin(request: NextRequest): NextResponse | null
   const origin = request.headers.get('origin');
   const fetchSite = request.headers.get('sec-fetch-site');
 
-  if ((origin && origin !== request.nextUrl.origin) || fetchSite === 'cross-site') {
+  // Reverse proxies can expose a public HTTPS origin while Next.js sees an
+  // internal HTTP URL. Modern browsers send Sec-Fetch-Site as a forbidden
+  // header, so application JavaScript cannot forge `same-origin`. Keep the
+  // explicit Origin comparison as the fallback for clients that omit it.
+  const originMismatch = Boolean(origin && origin !== request.nextUrl.origin);
+  if (fetchSite === 'cross-site' || (originMismatch && fetchSite !== 'same-origin')) {
     return jsonResponse({ error: 'リクエスト元を確認できません' }, 403);
   }
 
