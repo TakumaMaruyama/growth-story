@@ -32,3 +32,40 @@ test('JSON reader rejects cross-site origins before reading the body', async () 
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.response.status, 403);
 });
+
+test('JSON reader accepts a browser-confirmed same-origin request behind a reverse proxy', async () => {
+    const request = new NextRequest('http://internal-service:3000/api/test', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+            origin: 'https://public.example.test',
+            'sec-fetch-site': 'same-origin',
+        },
+        body: '{"value":1}',
+    });
+
+    const result = await readJsonObject(request, 128);
+    assert.equal(result.ok, true);
+});
+
+test('JSON reader still rejects same-site sibling origins behind a reverse proxy', async () => {
+    const request = new NextRequest('http://internal-service:3000/api/test', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+            origin: 'https://sibling.example.test',
+            'sec-fetch-site': 'same-site',
+        },
+        body: '{}',
+    });
+
+    const result = await readJsonObject(request, 128);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.response.status, 403);
+});
+
+test('JSON reader rejects cross-site metadata even when Origin matches', async () => {
+    const result = await readJsonObject(jsonRequest('{}', { 'sec-fetch-site': 'cross-site' }));
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.response.status, 403);
+});
