@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { clearTabDrafts } from '@/lib/tab-draft-store';
 
 interface NavProps {
     userName?: string;
@@ -37,16 +38,7 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
                 setLogoutError(data?.error ?? 'ログアウトできませんでした');
                 return;
             }
-            try {
-                for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
-                    const key = window.sessionStorage.key(index);
-                    if (key?.startsWith('swim-story:draft:')) {
-                        window.sessionStorage.removeItem(key);
-                    }
-                }
-            } catch {
-                // Storage may be unavailable in privacy-restricted browsers.
-            }
+            clearTabDrafts();
             router.replace(isAdmin ? '/admin/login' : '/login');
             router.refresh();
         } catch {

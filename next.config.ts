@@ -16,6 +16,12 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Replit's preview runner can otherwise infer `src/app` as the project root.
+  turbopack: {
+    root: process.cwd(),
+  },
+  allowedDevOrigins: ['*.replit.dev'],
+  serverExternalPackages: ['bcrypt'],
   async headers() {
     return [
       {

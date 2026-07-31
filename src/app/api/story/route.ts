@@ -5,14 +5,13 @@ import { getCurrentUser } from '@/lib/auth';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseStoryInput } from '@/lib/validation';
 import { MAX_STORY_VERSIONS } from '@/lib/limits';
-import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
+import { consumeRateLimits } from '@/lib/rate-limit';
+import { storyWriteRateLimitRules } from '@/lib/story-write-rate-limit';
 import {
     saveStoryVersion,
     StoryLimitError,
     StoryVersionConflictError,
 } from '@/lib/story-service';
-
-const STORY_WRITE_WINDOW_MS = 60 * 60 * 1000;
 
 export async function GET() {
     const user = await getCurrentUser();
@@ -48,21 +47,7 @@ export async function POST(request: NextRequest) {
     if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
 
     try {
-        const rules: RateLimitRule[] = [
-            {
-                namespace: 'story-write-user',
-                identifier: user.id,
-                maxAttempts: 60,
-                windowMs: STORY_WRITE_WINDOW_MS,
-            },
-            {
-                namespace: 'story-write-global',
-                identifier: 'all',
-                maxAttempts: 5_000,
-                windowMs: STORY_WRITE_WINDOW_MS,
-            },
-        ];
-        const rateLimit = await consumeRateLimits(rules);
+        const rateLimit = await consumeRateLimits(storyWriteRateLimitRules(user.id));
         if (!rateLimit.allowed) {
             const response = jsonResponse(
                 { error: '保存回数が多すぎます。しばらく待ってから再度お試しください' },

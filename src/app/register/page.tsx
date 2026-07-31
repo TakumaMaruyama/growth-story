@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
+import { loginHref, sanitizeReturnPath } from '@/lib/return-path';
 
-export default function RegisterPage() {
+function RegisterPageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const returnTo = sanitizeReturnPath(searchParams.get('next'), 'user');
     const [loginId, setLoginId] = useState('');
     const [displayName, setDisplayName] = useState('');
     const [password, setPassword] = useState('');
@@ -34,7 +37,7 @@ export default function RegisterPage() {
                 setError(data?.error ?? 'アカウントを作成できませんでした');
                 return;
             }
-            router.replace('/');
+            router.replace(returnTo ?? '/');
             router.refresh();
         } catch {
             setError('通信を確認して、もう一度お試しください');
@@ -128,10 +131,22 @@ export default function RegisterPage() {
                     </form>
 
                     <div className="auth-links">
-                        <Link href="/login">ログインへ戻る</Link>
+                        <Link href={loginHref(returnTo, 'user')}>ログインへ戻る</Link>
                     </div>
                 </div>
             </div>
         </main>
+    );
+}
+
+export default function RegisterPage() {
+    return (
+        <Suspense fallback={(
+            <main id="main-content" className="auth-shell">
+                <div className="card loading-state" role="status">読み込み中…</div>
+            </main>
+        )}>
+            <RegisterPageContent />
+        </Suspense>
     );
 }

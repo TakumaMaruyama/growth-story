@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
 import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
+import { loginHref } from '@/lib/return-path';
 
 interface UserInfo {
     displayName: string;
@@ -49,7 +50,7 @@ export default function AdminUsersPage() {
 
     const redirectForAuthorization = useCallback((status: number) => {
         if (status === 401) {
-            router.replace('/admin/login');
+            router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'admin'));
             return true;
         }
         if (status === 403) {

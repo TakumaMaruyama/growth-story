@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -10,8 +9,7 @@ import Nav from '@/components/Nav';
 export const metadata: Metadata = { title: '競泳物語' };
 
 export default async function StoryPage() {
-    const user = await requireUser();
-    if (user.role === 'ADMIN') redirect('/admin/users');
+    const user = await requireUser('/story');
 
     const latestStory = await prisma.storyVersion.findFirst({
         where: { userId: user.id },

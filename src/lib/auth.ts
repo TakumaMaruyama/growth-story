@@ -2,6 +2,8 @@ import { cookies } from 'next/headers';
 import { prisma } from './prisma';
 import { redirect } from 'next/navigation';
 import { generateSessionToken, hashSessionToken } from './session-token';
+import { loginHref } from './return-path';
+import { SESSION_COOKIE_SAME_SITE } from './session-cookie-policy';
 export { hashPassword, verifyPassword } from './password';
 
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -53,9 +55,7 @@ export async function setSessionCookie(token: string): Promise<void> {
     cookieStore.set(SESSION_COOKIE_NAME, token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        // Lax keeps authenticated deep links working from email and messaging
-        // apps while excluding the cookie from cross-site POST requests.
-        sameSite: 'lax',
+        sameSite: SESSION_COOKIE_SAME_SITE,
         path: '/',
         maxAge: SESSION_DURATION_MS / 1000,
     });
@@ -102,18 +102,21 @@ export async function getCurrentUser() {
     return session?.user ?? null;
 }
 
-export async function requireUser() {
+export async function requireUser(returnPath = '/') {
     const user = await getCurrentUser();
     if (!user) {
-        redirect('/login');
+        redirect(loginHref(returnPath, 'user'));
+    }
+    if (user.role !== 'USER') {
+        redirect('/admin/users');
     }
     return user;
 }
 
-export async function requireAdmin() {
+export async function requireAdmin(returnPath = '/admin/users') {
     const user = await getCurrentUser();
     if (!user) {
-        redirect('/admin/login');
+        redirect(loginHref(returnPath, 'admin'));
     }
     if (user.role !== 'ADMIN') {
         redirect('/');
