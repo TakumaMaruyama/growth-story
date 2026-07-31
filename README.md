@@ -94,4 +94,15 @@ npm run audit:prod
 
 マイグレーション後に失敗した場合は旧アプリだけを再起動せず、書き込み停止を維持してください。原因を修正して新バージョンを再デプロイするか、バックアップを別DBへ復元して接続先を切り替えます。
 
-Replit では Workspace Secrets と Deployment Secrets の両方に `DATABASE_URL` と `TRUSTED_PROXY_IP_HEADER` を登録してください。
+### Replit での初回公開
+
+1. GitHub からリポジトリをインポートし、開発用の Replit Database を追加する
+2. Workspace の Shell で `npm ci && npm run db:init && npm run db:verify` を実行する
+3. Preview で利用者登録、ログイン、日誌・物語の保存を確認する
+4. Autoscale を選び、`.replit` に定義した Build / Run コマンドで公開する
+5. Replit Database の Production 接続先に対して、マイグレーション履歴と `npm run db:verify` の結果を確認する
+6. 管理者を作成し、最初は非公開状態で管理者ログインを確認してから Public に切り替える
+
+現在の Replit 管理DBは、公開時に開発DBとは分離した本番DBと本番用 `DATABASE_URL` を用意します。Workspace の開発用 `DATABASE_URL` を Deployment Secret へコピーしないでください。手動設定するのは、Replit 管理DBではなく外部の専用本番DBを意図して使う場合だけです。
+
+Deployment Secret には `TRUSTED_PROXY_IP_HEADER=x-forwarded-for` を設定します。公開後は、Replit のプロキシを通った値が想定どおり取得でき、利用者間でレート制限が不必要に共有されないことを確認してください。`ADMIN_LOGIN_ID`、`ADMIN_PASSWORD`、`ADMIN_DISPLAY_NAME` は管理者作成時だけ使用し、作成後は永続的な Secret から削除します。
