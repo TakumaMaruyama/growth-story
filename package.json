@@ -13,7 +13,7 @@
     "lint": "eslint --max-warnings=0",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "node --import tsx --test src/lib/*.test.ts",
-    "test:db": "node --import tsx --test src/integration/*.test.ts",
+    "test:db": "prisma generate && node --import tsx --test src/integration/*.test.ts",
     "test:migrations": "node --import tsx scripts/test-migrations.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
