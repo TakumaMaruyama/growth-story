@@ -29,10 +29,9 @@ function historyHref(page: number): string {
 }
 
 export default async function StoryHistoryPage({ searchParams }: Props) {
-    const user = await requireUser();
-    if (user.role === 'ADMIN') redirect('/admin/users');
-
     const requestedPage = parsePage((await searchParams).page);
+    const user = await requireUser(requestedPage === null ? '/story/history' : historyHref(requestedPage));
+
     if (requestedPage === null) redirect('/story/history');
 
     const totalVersions = await prisma.storyVersion.count({ where: { userId: user.id } });

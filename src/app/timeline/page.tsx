@@ -50,11 +50,10 @@ function pageHref(page: number): string {
 }
 
 export default async function TimelinePage({ searchParams }: TimelinePageProps) {
-    const user = await requireUser();
-    if (user.role === 'ADMIN') redirect('/admin/users');
-
     const params = await searchParams;
     const requestedPage = parsePageParameter(params.page);
+    const user = await requireUser(requestedPage === null ? '/timeline' : pageHref(requestedPage));
+
     if (requestedPage === null) redirect('/timeline');
 
     const [storyCount, dailyCount] = await Promise.all([

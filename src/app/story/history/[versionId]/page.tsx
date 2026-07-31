@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -11,9 +11,8 @@ interface Props {
 }
 
 export default async function StoryVersionPage({ params }: Props) {
-    const user = await requireUser();
-    if (user.role === 'ADMIN') redirect('/admin/users');
     const { versionId } = await params;
+    const user = await requireUser(`/story/history/${encodeURIComponent(versionId)}`);
 
     const storyVersion = await prisma.storyVersion.findFirst({
         where: { id: versionId, userId: user.id },

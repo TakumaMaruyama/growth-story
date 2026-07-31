@@ -3,8 +3,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { loginHref, postLoginDestination } from '@/lib/return-path';
 
-export default function LoginForm({ adminOnly = false }: { adminOnly?: boolean }) {
+interface LoginFormProps {
+    adminOnly?: boolean;
+    returnTo?: string | null;
+}
+
+export default function LoginForm({ adminOnly = false, returnTo = null }: LoginFormProps) {
     const router = useRouter();
     const [loginId, setLoginId] = useState('');
     const [password, setPassword] = useState('');
@@ -31,7 +37,12 @@ export default function LoginForm({ adminOnly = false }: { adminOnly?: boolean }
                 return;
             }
 
-            router.replace(data?.role === 'ADMIN' ? '/admin/users' : '/');
+            const destination = postLoginDestination(data?.role, returnTo);
+            if (!destination) {
+                setError('ログイン結果を確認できませんでした。もう一度お試しください');
+                return;
+            }
+            router.replace(destination);
             router.refresh();
         } catch {
             setError('通信を確認して、もう一度お試しください');
@@ -99,8 +110,10 @@ export default function LoginForm({ adminOnly = false }: { adminOnly?: boolean }
                             <Link href="/login">通常ログインへ戻る</Link>
                         ) : (
                             <>
-                                <Link href="/register">新しくアカウントを作る</Link>
-                                <Link href="/admin/login">管理者ログイン</Link>
+                                <Link href={returnTo ? `/register?next=${encodeURIComponent(returnTo)}` : '/register'}>
+                                    新しくアカウントを作る
+                                </Link>
+                                <Link href={loginHref(null, 'admin')}>管理者ログイン</Link>
                             </>
                         )}
                     </div>

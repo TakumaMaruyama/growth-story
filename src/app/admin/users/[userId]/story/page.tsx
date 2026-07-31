@@ -28,9 +28,9 @@ function historyHref(userId: string, page: number): string {
 }
 
 export default async function AdminUserStoryPage({ params, searchParams }: Props) {
-    const admin = await requireAdmin();
     const { userId } = await params;
     const requestedPage = parsePage((await searchParams).page);
+    const admin = await requireAdmin(historyHref(userId, requestedPage ?? 1));
     if (requestedPage === null) redirect(historyHref(userId, 1));
 
     const [targetUser, totalVersions] = await Promise.all([

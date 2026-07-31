@@ -10,19 +10,13 @@ import {
     MAX_STORY_VERSIONS,
 } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
+import { parseStoryReadResponse, type StoryReadResponse } from '@/lib/story-read-response';
+import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
+import { loginHref } from '@/lib/return-path';
 
 interface UserInfo {
     id: string;
     displayName: string;
-}
-
-interface StoryResponse {
-    user: UserInfo;
-    story: {
-        version: number;
-        answers: Array<{ questionNo: number; answerText: string }>;
-        legacyAnswerCount: number;
-    } | null;
 }
 
 interface StoryFormState {
@@ -49,55 +43,6 @@ function isStoryVersion(value: unknown): value is number {
     return typeof value === 'number'
         && Number.isSafeInteger(value)
         && value >= 1;
-}
-
-function parseStoryResponse(value: unknown): StoryResponse | null {
-    if (!isRecord(value) || !isRecord(value.user)) return null;
-    if (
-        typeof value.user.id !== 'string'
-        || !value.user.id
-        || typeof value.user.displayName !== 'string'
-        || !value.user.displayName
-    ) {
-        return null;
-    }
-
-    if (value.story === null) {
-        return {
-            user: { id: value.user.id, displayName: value.user.displayName },
-            story: null,
-        };
-    }
-    if (!isRecord(value.story) || !isStoryVersion(value.story.version) || !Array.isArray(value.story.answers)) {
-        return null;
-    }
-    const seenQuestions = new Set<number>();
-    const answers: Array<{ questionNo: number; answerText: string }> = [];
-    let legacyAnswerCount = 0;
-    for (const answer of value.story.answers) {
-        if (
-            !isRecord(answer)
-            || typeof answer.questionNo !== 'number'
-            || typeof answer.answerText !== 'string'
-        ) {
-            return null;
-        }
-        if (
-            !Number.isInteger(answer.questionNo)
-            || !QUESTION_NUMBERS.has(answer.questionNo)
-            || seenQuestions.has(answer.questionNo)
-        ) {
-            legacyAnswerCount += 1;
-            continue;
-        }
-        seenQuestions.add(answer.questionNo);
-        answers.push({ questionNo: answer.questionNo, answerText: answer.answerText });
-    }
-
-    return {
-        user: { id: value.user.id, displayName: value.user.displayName },
-        story: { version: value.story.version, answers, legacyAnswerCount },
-    };
 }
 
 function parseApiError(value: unknown): { error?: string; code?: string; currentVersion?: number | null } {
@@ -152,34 +97,20 @@ function parseDraft(value: string): StoryDraft | null {
 }
 
 function readDraft(key: string): { draft: StoryDraft | null; available: boolean } {
-    try {
-        const saved = window.sessionStorage.getItem(key);
-        if (saved === null) return { draft: null, available: true };
+    const saved = readTabDraft(key);
+    if (saved.value === null) return { draft: null, available: saved.durable };
 
-        const draft = parseDraft(saved);
-        if (!draft) window.sessionStorage.removeItem(key);
-        return { draft, available: true };
-    } catch {
-        return { draft: null, available: false };
-    }
+    const draft = parseDraft(saved.value);
+    if (!draft) removeTabDraft(key);
+    return { draft, available: saved.durable };
 }
 
 function writeDraft(key: string, draft: StoryDraft): boolean {
-    try {
-        window.sessionStorage.setItem(key, JSON.stringify(draft));
-        return true;
-    } catch {
-        return false;
-    }
+    return writeTabDraft(key, JSON.stringify(draft));
 }
 
 function removeDraft(key: string): boolean {
-    try {
-        window.sessionStorage.removeItem(key);
-        return true;
-    } catch {
-        return false;
-    }
+    return removeTabDraft(key);
 }
 
 export default function StoryEditPage() {
@@ -228,7 +159,7 @@ export default function StoryEditPage() {
                 });
                 const raw: unknown = await response.json().catch(() => null);
                 if (response.status === 401) {
-                    router.replace('/login');
+                    router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
                 if (response.status === 403) {
@@ -240,7 +171,7 @@ export default function StoryEditPage() {
                     return;
                 }
 
-                const data = parseStoryResponse(raw);
+                const data: StoryReadResponse | null = parseStoryReadResponse(raw);
                 if (!data) {
                     setLoadError('受信した競泳物語の形式が正しくありません');
                     return;
@@ -344,7 +275,7 @@ export default function StoryEditPage() {
             const raw: unknown = await response.json().catch(() => null);
             const apiError = parseApiError(raw);
             if (response.status === 401) {
-                router.replace('/login');
+                router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
             }
             if (response.status === 403) {
@@ -497,7 +428,7 @@ export default function StoryEditPage() {
                                     <span className="muted">
                                         {draftStorageAvailable
                                             ? '下書きはこのタブ内に自動保存されています'
-                                            : '下書きを自動保存できません。戻る操作やタブを閉じる前に保存してください'}
+                                            : '下書きはこのタブのメモリに一時保護しています。再読み込みやタブを閉じる前に保存してください'}
                                     </span>
                                 ) : (
                                     <span className="muted">変更はありません</span>

@@ -10,8 +10,8 @@ interface Props {
 }
 
 export default async function AdminUserDetailPage({ params }: Props) {
-    const admin = await requireAdmin();
     const { userId } = await params;
+    const admin = await requireAdmin(`/admin/users/${encodeURIComponent(userId)}`);
 
     const [targetUser, latestStory, latestDailyLog] = await Promise.all([
         prisma.user.findUnique({

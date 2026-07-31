@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
+import { loginHref } from '@/lib/return-path';
 
 interface Props {
     params: Promise<{ userId: string }>;
@@ -59,7 +60,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                     truncated?: boolean;
                 } | null;
                 if (response.status === 401) {
-                    router.replace('/admin/login');
+                    router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'admin'));
                     return;
                 }
                 if (response.status === 403) {

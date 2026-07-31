@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Nav from '@/components/Nav';
 import { MAX_DAILY_TEXT_LENGTH } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
+import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
+import { loginHref } from '@/lib/return-path';
 
 interface UserInfo {
     id: string;
@@ -73,9 +75,9 @@ function isDailyRevision(value: unknown): value is number | null {
 
 function readDailyDraft(key: string): { draft: DailyDraft | null; available: boolean } {
     try {
-        const raw = window.sessionStorage.getItem(key);
-        if (!raw) return { draft: null, available: true };
-        const value: unknown = JSON.parse(raw);
+        const saved = readTabDraft(key);
+        if (!saved.value) return { draft: null, available: saved.durable };
+        const value: unknown = JSON.parse(saved.value);
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid draft');
         const record = value as Record<string, unknown>;
         if (
@@ -87,7 +89,7 @@ function readDailyDraft(key: string): { draft: DailyDraft | null; available: boo
         }
         return {
             draft: { baseRevision: record.baseRevision, log: record.log },
-            available: true,
+            available: saved.durable,
         };
     } catch {
         return { draft: null, available: removeDailyDraft(key) };
@@ -95,21 +97,11 @@ function readDailyDraft(key: string): { draft: DailyDraft | null; available: boo
 }
 
 function writeDailyDraft(key: string, draft: DailyDraft): boolean {
-    try {
-        window.sessionStorage.setItem(key, JSON.stringify(draft));
-        return true;
-    } catch {
-        return false;
-    }
+    return writeTabDraft(key, JSON.stringify(draft));
 }
 
 function removeDailyDraft(key: string): boolean {
-    try {
-        window.sessionStorage.removeItem(key);
-        return true;
-    } catch {
-        return false;
-    }
+    return removeTabDraft(key);
 }
 
 function requestKeyToHref(requestKey: string): string {
@@ -141,6 +133,7 @@ function DailyLogPageContent() {
 
     const loadedDateRef = useRef<string | null>(null);
     const loadedRequestKeyRef = useRef<string | null>(null);
+    const userIdRef = useRef<string | null>(null);
     const baselineLogRef = useRef<LogData>(EMPTY_LOG);
     const baseRevisionRef = useRef<number | null>(null);
     const dirtyRef = useRef(false);
@@ -157,6 +150,9 @@ function DailyLogPageContent() {
                     suppressRestoredRequestRef.current = previousRequestKey;
                     router.replace(requestKeyToHref(previousRequestKey), { scroll: false });
                     return;
+                }
+                if (userIdRef.current && loadedDateRef.current) {
+                    removeDailyDraft(dailyDraftKey(userIdRef.current, loadedDateRef.current));
                 }
             }
 
@@ -195,7 +191,11 @@ function DailyLogPageContent() {
                 } | null;
 
                 if (response.status === 401) {
-                    router.replace('/login');
+                    router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
+                    return;
+                }
+                if (response.status === 403) {
+                    router.replace('/admin/users');
                     return;
                 }
                 if (!response.ok || !data?.user || !data.date) {
@@ -230,6 +230,7 @@ function DailyLogPageContent() {
                 );
 
                 setUser(data.user);
+                userIdRef.current = data.user.id;
                 setDraftStorageAvailable(savedDraft.available);
                 setLoadedDate(data.date);
                 setLoadedRequestKey(requestKey);
@@ -530,7 +531,7 @@ function DailyLogPageContent() {
 
                         {dirty && !draftStorageAvailable && (
                             <p className="alert alert-danger" role="alert">
-                                このブラウザでは下書きを自動保存できません。戻る操作やタブを閉じる前に、日誌を保存してください。
+                                下書きはこのタブのメモリに一時保護しています。戻る操作後もこのタブで日誌を開き直せば復元できますが、再読み込みやタブを閉じる前に保存してください。
                             </p>
                         )}
 

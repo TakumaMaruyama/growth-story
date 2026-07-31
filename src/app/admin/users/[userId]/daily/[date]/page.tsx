@@ -10,8 +10,10 @@ interface Props {
 }
 
 export default async function AdminUserDailyDetailPage({ params }: Props) {
-    const admin = await requireAdmin();
     const { userId, date } = await params;
+    const admin = await requireAdmin(
+        `/admin/users/${encodeURIComponent(userId)}/daily/${encodeURIComponent(date)}`,
+    );
     const logDate = parseDateOnly(date);
     if (!logDate) notFound();
 

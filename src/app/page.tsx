@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -10,7 +9,6 @@ export const metadata: Metadata = { title: 'ホーム' };
 
 export default async function HomePage() {
   const user = await requireUser();
-  if (user.role === 'ADMIN') redirect('/admin/users');
 
   const today = todayJST();
   const todayDate = parseDateOnly(today);
