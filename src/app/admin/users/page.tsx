@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
+import { MIN_USER_PASSWORD_LENGTH } from '@/lib/limits';
 import { loginHref } from '@/lib/return-path';
 
 interface UserInfo {
@@ -226,11 +226,13 @@ export default function AdminUsersPage() {
                                     value={password}
                                     onChange={(event) => setPassword(event.target.value)}
                                     required
-                                    minLength={MIN_PASSWORD_LENGTH}
+                                    minLength={MIN_USER_PASSWORD_LENGTH}
                                     autoComplete="new-password"
                                     disabled={creating}
                                 />
-                                <p className="form-help">{MIN_PASSWORD_LENGTH}文字以上</p>
+                                <p className="form-help">
+                                    {MIN_USER_PASSWORD_LENGTH}文字以上。英数字のみでも設定できます。
+                                </p>
                             </div>
                             <div className="form-group">
                                 <label htmlFor="passwordConfirmation" className="form-label">初期パスワード（確認）</label>
@@ -241,7 +243,7 @@ export default function AdminUsersPage() {
                                     value={passwordConfirmation}
                                     onChange={(event) => setPasswordConfirmation(event.target.value)}
                                     required
-                                    minLength={MIN_PASSWORD_LENGTH}
+                                    minLength={MIN_USER_PASSWORD_LENGTH}
                                     autoComplete="new-password"
                                     disabled={creating}
                                     aria-invalid={Boolean(createError && password !== passwordConfirmation)}

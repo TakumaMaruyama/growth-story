@@ -7,7 +7,11 @@ import {
     parseLoginInput,
     parseStoryInput,
 } from './validation';
-import { MAX_DAILY_TEXT_LENGTH, MAX_STORY_ANSWER_LENGTH } from './limits';
+import {
+    MAX_DAILY_TEXT_LENGTH,
+    MAX_STORY_ANSWER_LENGTH,
+    MIN_ADMIN_PASSWORD_LENGTH,
+} from './limits';
 
 test('account validation accepts a strong, well-formed account', () => {
     const result = parseAccountInput({
@@ -21,8 +25,19 @@ test('account validation accepts a strong, well-formed account', () => {
     }
 });
 
-test('account validation rejects weak or bcrypt-truncated passwords', () => {
-    assert.equal(parseAccountInput({ loginId: 'user_01', displayName: '選手', password: 'short' }).ok, false);
+test('account validation accepts an eight-character alphanumeric password', () => {
+    const result = parseAccountInput({
+        loginId: 'user_01',
+        displayName: '選手',
+        password: 'abc12345',
+    });
+
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.value.password, 'abc12345');
+});
+
+test('account validation rejects seven-character or bcrypt-truncated passwords', () => {
+    assert.equal(parseAccountInput({ loginId: 'user_01', displayName: '選手', password: 'abc1234' }).ok, false);
     assert.equal(parseAccountInput({ loginId: 'user_01', displayName: '選手', password: 'あ'.repeat(25) }).ok, false);
     assert.equal(parseAccountInput({
         loginId: 'user_01',
@@ -30,6 +45,20 @@ test('account validation rejects weak or bcrypt-truncated passwords', () => {
         password: 'safe-pass-2026',
         role: 'ADMIN',
     }).ok, false);
+});
+
+test('administrator bootstrap keeps the stronger ten-character minimum', () => {
+    const options = { minimumPasswordLength: MIN_ADMIN_PASSWORD_LENGTH };
+    assert.equal(parseAccountInput({
+        loginId: 'admin_01',
+        displayName: '管理者',
+        password: 'abc12345',
+    }, options).ok, false);
+    assert.equal(parseAccountInput({
+        loginId: 'admin_01',
+        displayName: '管理者',
+        password: 'abc1234567',
+    }, options).ok, true);
 });
 
 test('login validation preserves access for credentials created before current limits', () => {

@@ -87,7 +87,14 @@ export interface AccountInput {
   password: string;
 }
 
-export function parseAccountInput(body: Record<string, unknown>): ValidationResult<AccountInput> {
+export interface AccountValidationOptions {
+  minimumPasswordLength?: number;
+}
+
+export function parseAccountInput(
+  body: Record<string, unknown>,
+  options: AccountValidationOptions = {},
+): ValidationResult<AccountInput> {
   const allowedFields = new Set(['loginId', 'displayName', 'password']);
   if (Object.keys(body).some((key) => !allowedFields.has(key))) {
     return failure('リクエストの形式が正しくありません');
@@ -107,7 +114,7 @@ export function parseAccountInput(body: Record<string, unknown>): ValidationResu
     return failure(`表示名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください`);
   }
 
-  const passwordError = getPasswordValidationError(password);
+  const passwordError = getPasswordValidationError(password, options.minimumPasswordLength);
   if (passwordError) return failure(passwordError);
 
   return success({ loginId, displayName, password });
