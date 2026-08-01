@@ -1,40 +1,63 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { parseDailyLogDate, todayJST } from '@/lib/date';
+import { parseDailyLogDate, parseDateOnly, todayJST } from '@/lib/date';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseDailyLogInput } from '@/lib/validation';
 import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
-import { DailyLogConflictError, saveDailyLog } from '@/lib/daily-log-service';
+import {
+    countEligibleDailyLogs,
+    DailyLogConflictError,
+    saveDailyLog,
+} from '@/lib/daily-log-service';
 
 export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
     if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
 
-    const date = request.nextUrl.searchParams.get('date') || todayJST();
+    const today = todayJST();
+    const date = request.nextUrl.searchParams.get('date') || today;
     const logDate = parseDailyLogDate(date);
     if (!logDate) return jsonResponse({ error: '日付は1970年以降、今日から1年以内で指定してください' }, 400);
 
     try {
-        const log = await prisma.dailyLog.findUnique({
-            where: { userId_logDate: { userId: user.id, logDate } },
-            select: {
-                score: true,
-                practiced: true,
-                goodText: true,
-                improveText: true,
-                tomorrowText: true,
-                revision: true,
-                updatedAt: true,
-            },
-        });
+        const todayDate = parseDateOnly(today)!;
+        const [log, previousFocusLog, eligibleRecordCount] = await Promise.all([
+            prisma.dailyLog.findUnique({
+                where: { userId_logDate: { userId: user.id, logDate } },
+                select: {
+                    score: true,
+                    practiced: true,
+                    goodText: true,
+                    improveText: true,
+                    tomorrowText: true,
+                    revision: true,
+                    updatedAt: true,
+                },
+            }),
+            prisma.dailyLog.findFirst({
+                where: {
+                    userId: user.id,
+                    logDate: { lt: logDate },
+                    AND: [
+                        { tomorrowText: { not: null } },
+                        { tomorrowText: { not: '' } },
+                    ],
+                },
+                orderBy: { logDate: 'desc' },
+                select: { tomorrowText: true },
+            }),
+            countEligibleDailyLogs(user.id, todayDate),
+        ]);
 
         return jsonResponse({
             user: { id: user.id, displayName: user.displayName },
             date,
-            today: todayJST(),
+            today,
             log,
+            previousFocus: previousFocusLog?.tomorrowText ?? null,
+            eligibleRecordCount,
         });
     } catch (error) {
         console.error('Daily log read error:', error);
@@ -70,8 +93,15 @@ export async function POST(request: NextRequest) {
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
         const log = await saveDailyLog({ userId: user.id, ...input.value });
+        const todayDate = parseDateOnly(todayJST())!;
+        const eligibleRecordCount = await countEligibleDailyLogs(user.id, todayDate);
 
-        return jsonResponse({ success: true, revision: log.revision });
+        return jsonResponse({
+            success: true,
+            revision: log.revision,
+            created: input.value.baseRevision === null,
+            eligibleRecordCount,
+        });
     } catch (error) {
         if (error instanceof DailyLogConflictError) {
             return jsonResponse(

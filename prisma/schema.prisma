@@ -10,21 +10,22 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  loginId       String    @unique @map("login_id")
-  displayName   String    @map("display_name")
-  email         String?
-  role          Role      @default(USER)
-  passwordHash  String    @map("password_hash")
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  loginId      String   @unique @map("login_id")
+  displayName  String   @map("display_name")
+  email        String?
+  role         Role     @default(USER)
+  passwordHash String   @map("password_hash")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  sessions      Session[]
-  dailyLogs     DailyLog[]
-  storyVersions StoryVersion[]
-  adminActions  AdminAuditEvent[] @relation("AdminAuditActor")
-  auditTargets  AdminAuditEvent[] @relation("AdminAuditTarget")
+  sessions         Session[]
+  dailyLogs        DailyLog[]
+  competitionGoals CompetitionGoal[]
+  storyVersions    StoryVersion[]
+  adminActions     AdminAuditEvent[] @relation("AdminAuditActor")
+  auditTargets     AdminAuditEvent[] @relation("AdminAuditTarget")
 
   @@map("users")
 }
@@ -52,7 +53,7 @@ model DailyLog {
   id           String   @id @default(uuid())
   userId       String   @map("user_id")
   logDate      DateTime @map("log_date") @db.Date
-  score        Int      // 1-10
+  score        Int // 1-10
   practiced    Boolean  @default(false)
   revision     Int      @default(1)
   goodText     String?  @map("good_text") @db.Text
@@ -66,6 +67,32 @@ model DailyLog {
   @@unique([userId, logDate])
   @@index([userId, logDate(sort: Desc)])
   @@map("daily_logs")
+}
+
+enum CompetitionGoalType {
+  NEXT_MEET
+  ANNUAL
+  MILESTONE
+}
+
+model CompetitionGoal {
+  id         String              @id @default(uuid())
+  userId     String              @map("user_id")
+  type       CompetitionGoalType @map("goal_type")
+  title      String
+  details    String?             @db.Text
+  targetDate DateTime?           @map("target_date") @db.Date
+  isActive   Boolean             @default(true) @map("is_active")
+  archivedAt DateTime?           @map("archived_at")
+  revision   Int                 @default(1)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive, updatedAt(sort: Desc)])
+  @@index([userId, type, isActive])
+  @@map("competition_goals")
 }
 
 model StoryVersion {

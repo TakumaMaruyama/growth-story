@@ -7,3 +7,7 @@ export const MAX_DAILY_TEXT_LENGTH = 2_000;
 export const MAX_STORY_ANSWER_LENGTH = 4_000;
 export const MAX_STORY_NOTE_LENGTH = 200;
 export const MAX_STORY_VERSIONS = 250;
+export const MAX_GOAL_TITLE_LENGTH = 120;
+export const MAX_GOAL_DETAILS_LENGTH = 2_000;
+export const MAX_ACTIVE_MILESTONE_GOALS = 20;
+export const MAX_COMPETITION_GOALS_PER_USER = 250;

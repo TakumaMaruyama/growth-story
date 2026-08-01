@@ -88,6 +88,41 @@ async function main() {
     await applyMigration(migrationPool, '20260801000000_hash_session_tokens');
     await applyMigration(migrationPool, '20260801000100_remove_growth_features');
     await applyMigration(migrationPool, '20260801000200_harden_security');
+    await applyMigration(migrationPool, '20260801000300_competition_goals');
+
+    await migrationPool.query(
+        `INSERT INTO "competition_goals"
+            ("id", "user_id", "goal_type", "title", "target_date", "updated_at")
+         VALUES ($1, $2, 'NEXT_MEET', 'First next meet', NULL, CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId],
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "competition_goals"
+                ("id", "user_id", "goal_type", "title", "updated_at")
+             VALUES ($1, $2, 'NEXT_MEET', 'Duplicate next meet', CURRENT_TIMESTAMP)`,
+            [randomUUID(), userId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23505',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "competition_goals"
+                ("id", "user_id", "goal_type", "title", "updated_at")
+             VALUES ($1, $2, 'ANNUAL', 'Missing target year', CURRENT_TIMESTAMP)`,
+            [randomUUID(), userId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "competition_goals"
+                ("id", "user_id", "goal_type", "title", "target_date", "updated_at")
+             VALUES ($1, $2, 'ANNUAL', 'Invalid target year', DATE '2026-08-01', CURRENT_TIMESTAMP)`,
+            [randomUUID(), userId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
 
     const archivedProfile = await migrationPool.query<{
         sex: string;
@@ -124,18 +159,25 @@ async function main() {
     const invariants = await migrationPool.query<{
         sessions: number;
         revision: number;
+        competitionGoals: number;
         active_growth_tables: number;
     }>(
         `SELECT
             (SELECT count(*)::integer FROM "sessions") AS "sessions",
             (SELECT "revision" FROM "daily_logs" WHERE "user_id" = $1) AS "revision",
+            (SELECT count(*)::integer FROM "competition_goals" WHERE "user_id" = $1) AS "competitionGoals",
             (SELECT count(*)::integer
                FROM information_schema.tables
               WHERE table_schema = 'public'
                 AND table_name IN ('growth_profiles', 'growth_measurements')) AS "active_growth_tables"`,
         [userId],
     );
-    assert.deepEqual(invariants.rows, [{ sessions: 0, revision: 1, active_growth_tables: 0 }]);
+    assert.deepEqual(invariants.rows, [{
+        sessions: 0,
+        revision: 1,
+        competitionGoals: 1,
+        active_growth_tables: 0,
+    }]);
 
     await assert.rejects(
         migrationPool.query('DELETE FROM "users" WHERE "id" = $1', [userId]),

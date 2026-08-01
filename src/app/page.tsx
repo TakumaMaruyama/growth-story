@@ -14,7 +14,7 @@ export default async function HomePage() {
   const todayDate = parseDateOnly(today);
   if (!todayDate) throw new Error('Failed to resolve today');
 
-  const [todayLog, latestStory, dailyLogCount, storyVersionCount] = await Promise.all([
+  const [todayLog, latestStory, dailyLogCount, storyVersionCount, competitionGoals] = await Promise.all([
     prisma.dailyLog.findUnique({
       where: { userId_logDate: { userId: user.id, logDate: todayDate } },
       select: { score: true, practiced: true, goodText: true },
@@ -26,7 +26,17 @@ export default async function HomePage() {
     }),
     prisma.dailyLog.count({ where: { userId: user.id } }),
     prisma.storyVersion.count({ where: { userId: user.id } }),
+    prisma.competitionGoal.findMany({
+      where: { userId: user.id, isActive: true },
+      orderBy: [{ targetDate: 'asc' }, { updatedAt: 'desc' }],
+      select: { type: true, title: true, targetDate: true },
+    }),
   ]);
+
+  const nextMeetGoal = competitionGoals.find((goal) => goal.type === 'NEXT_MEET');
+  const annualGoal = competitionGoals.find((goal) => goal.type === 'ANNUAL');
+  const nextMilestone = competitionGoals.find((goal) => goal.type === 'MILESTONE');
+  const milestoneCount = competitionGoals.filter((goal) => goal.type === 'MILESTONE').length;
 
   return (
     <>
@@ -41,6 +51,7 @@ export default async function HomePage() {
               {todayLog ? '今日の日誌を見直す' : '今日の日誌を書く'}
             </Link>
             <Link href="/story/edit" className="btn btn-secondary">競泳物語を更新する</Link>
+            <Link href="/goals" className="btn btn-secondary">大会目標を決める</Link>
           </div>
         </section>
 
@@ -53,6 +64,64 @@ export default async function HomePage() {
             <p className="summary-label">物語の更新</p>
             <p className="summary-value">{storyVersionCount}<span className="visually-hidden">回</span></p>
           </div>
+          <div className="summary-item">
+            <p className="summary-label">設定中の大会目標</p>
+            <p className="summary-value">{competitionGoals.length}<span className="visually-hidden">件</span></p>
+          </div>
+        </section>
+
+        <section className="card" aria-labelledby="goals-heading">
+          <div className="page-header">
+            <div>
+              <p className="eyebrow">Competition goals</p>
+              <h2 id="goals-heading" className="section-title">大会目標</h2>
+              <p className="muted">次の大会から年間の挑戦まで、いま目指していることを確認できます。</p>
+            </div>
+            <Link href="/goals" className="btn btn-secondary">
+              {competitionGoals.length > 0 ? '目標を確認・編集' : '目標を決める'}
+            </Link>
+          </div>
+
+          {competitionGoals.length > 0 ? (
+            <div className="summary-grid">
+              <div className="summary-item">
+                <p className="summary-label">次の大会</p>
+                {nextMeetGoal ? (
+                  <>
+                    <p className="question-title">{nextMeetGoal.title}</p>
+                    <p className="muted">
+                      {nextMeetGoal.targetDate ? formatJSTDisplay(nextMeetGoal.targetDate) : '大会日は未定'}
+                    </p>
+                  </>
+                ) : <p className="muted">まだ設定されていません</p>}
+              </div>
+              <div className="summary-item">
+                <p className="summary-label">年間目標</p>
+                {annualGoal ? (
+                  <>
+                    <p className="question-title">{annualGoal.title}</p>
+                    <p className="muted">
+                      {annualGoal.targetDate ? `${annualGoal.targetDate.getUTCFullYear()}年の目標` : '対象年は未設定'}
+                    </p>
+                  </>
+                ) : <p className="muted">まだ設定されていません</p>}
+              </div>
+              <div className="summary-item">
+                <p className="summary-label">期限つき目標</p>
+                {nextMilestone ? (
+                  <>
+                    <p className="question-title">{nextMilestone.title}</p>
+                    <p className="muted">
+                      {nextMilestone.targetDate && `${formatJSTDisplay(nextMilestone.targetDate)}まで`}
+                      {milestoneCount > 1 && `・ほか${milestoneCount - 1}件`}
+                    </p>
+                  </>
+                ) : <p className="muted">まだ設定されていません</p>}
+              </div>
+            </div>
+          ) : (
+            <p className="empty-state">大会名や期限が決まったら、短い言葉から残してみましょう。</p>
+          )}
         </section>
 
         <div className="summary-grid" style={{ marginTop: '1rem' }}>

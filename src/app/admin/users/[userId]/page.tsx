@@ -13,7 +13,7 @@ export default async function AdminUserDetailPage({ params }: Props) {
     const { userId } = await params;
     const admin = await requireAdmin(`/admin/users/${encodeURIComponent(userId)}`);
 
-    const [targetUser, latestStory, latestDailyLog] = await Promise.all([
+    const [targetUser, latestStory, latestDailyLog, activeGoals] = await Promise.all([
         prisma.user.findUnique({
             where: { id: userId },
             select: {
@@ -22,7 +22,7 @@ export default async function AdminUserDetailPage({ params }: Props) {
                 displayName: true,
                 isActive: true,
                 createdAt: true,
-                _count: { select: { dailyLogs: true, storyVersions: true } },
+                _count: { select: { dailyLogs: true, storyVersions: true, competitionGoals: true } },
             },
         }),
         prisma.storyVersion.findFirst({
@@ -35,9 +35,15 @@ export default async function AdminUserDetailPage({ params }: Props) {
             orderBy: { logDate: 'desc' },
             select: { logDate: true, score: true, practiced: true },
         }),
+        prisma.competitionGoal.findMany({
+            where: { userId, isActive: true },
+            orderBy: [{ targetDate: 'asc' }, { updatedAt: 'desc' }],
+            select: { id: true, type: true, title: true, targetDate: true },
+        }),
     ]);
 
     if (!targetUser) notFound();
+    const primaryGoal = activeGoals[0];
 
     return (
         <>
@@ -82,6 +88,10 @@ export default async function AdminUserDetailPage({ params }: Props) {
                                 <p className="summary-label">物語の更新</p>
                                 <p className="summary-value">{targetUser._count.storyVersions}</p>
                             </div>
+                            <div>
+                                <p className="summary-label">大会目標</p>
+                                <p className="summary-value">{targetUser._count.competitionGoals}</p>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -107,6 +117,18 @@ export default async function AdminUserDetailPage({ params }: Props) {
                                 </>
                             ) : <p className="muted">記録なし</p>}
                         </div>
+                        <div className="summary-item">
+                            <h3 className="question-title">大会目標</h3>
+                            {primaryGoal ? (
+                                <>
+                                    <p>{primaryGoal.title}</p>
+                                    <p className="muted">
+                                        有効な目標 {activeGoals.length}件
+                                        {primaryGoal.targetDate && `・${formatJSTDisplay(primaryGoal.targetDate)}まで`}
+                                    </p>
+                                </>
+                            ) : <p className="muted">記録なし</p>}
+                        </div>
                     </div>
                 </section>
 
@@ -115,6 +137,7 @@ export default async function AdminUserDetailPage({ params }: Props) {
                     <div className="button-row">
                         <Link href={`/admin/users/${userId}/daily`} className="btn btn-secondary">日誌一覧</Link>
                         <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">物語履歴</Link>
+                        <Link href={`/admin/users/${userId}/goals`} className="btn btn-secondary">大会目標</Link>
                     </div>
                 </section>
             </main>
