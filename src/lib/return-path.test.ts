@@ -12,6 +12,10 @@ test('return paths preserve valid deep links and query strings', () => {
         '/story/history/version-1',
     );
     assert.equal(
+        sanitizeReturnPath('/goals', 'user'),
+        '/goals',
+    );
+    assert.equal(
         sanitizeReturnPath('/admin/users/user-1/daily?from=2026-01-01', 'admin'),
         '/admin/users/user-1/daily?from=2026-01-01',
     );
@@ -39,6 +43,7 @@ test('return paths reject external, ambiguous and cross-role destinations', () =
 
 test('login href encodes only sanitized non-default destinations', () => {
     assert.equal(loginHref('/daily?date=2026-08-01', 'user'), '/login?next=%2Fdaily%3Fdate%3D2026-08-01');
+    assert.equal(loginHref('/goals', 'user'), '/login?next=%2Fgoals');
     assert.equal(loginHref('https://example.com', 'user'), '/login');
     assert.equal(loginHref('/', 'user'), '/login');
     assert.equal(loginHref('/admin/users/user-1', 'admin'), '/admin/login?next=%2Fadmin%2Fusers%2Fuser-1');

@@ -20,13 +20,6 @@ interface NavProps {
 const USER_LINKS = [
     { href: '/', label: 'ホーム', Icon: HouseIcon },
     { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
-    { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
-    { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
-] as const;
-
-const MOBILE_USER_LINKS = [
-    { href: '/', label: 'ホーム', Icon: HouseIcon },
-    { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
     { href: '/goals', label: '大会目標', Icon: TargetIcon },
     { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
     { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
@@ -105,7 +98,7 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
 
             {!isAdmin && (
                 <nav className="mobile-bottom-nav" aria-label="モバイルナビゲーション">
-                    {MOBILE_USER_LINKS.map((link) => {
+                    {USER_LINKS.map((link) => {
                         const isCurrent = link.href === '/'
                             ? pathname === '/'
                             : pathname === link.href || pathname.startsWith(`${link.href}/`);
