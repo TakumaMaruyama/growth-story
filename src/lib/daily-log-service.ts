@@ -18,6 +18,18 @@ export interface DailyLogSaveInput {
     tomorrowText: string | null;
 }
 
+export async function countEligibleDailyLogs(
+    userId: string,
+    throughDate: Date,
+): Promise<number> {
+    return prisma.dailyLog.count({
+        where: {
+            userId,
+            logDate: { lte: throughDate },
+        },
+    });
+}
+
 export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision: number }> {
     const {
         userId,

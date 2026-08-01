@@ -3,6 +3,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { BookOpenTextIcon } from '@phosphor-icons/react/dist/csr/BookOpenText';
+import { ChartLineUpIcon } from '@phosphor-icons/react/dist/csr/ChartLineUp';
+import { HouseIcon } from '@phosphor-icons/react/dist/csr/House';
+import { NotePencilIcon } from '@phosphor-icons/react/dist/csr/NotePencil';
+import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
 import { clearTabDrafts } from '@/lib/tab-draft-store';
 
 interface NavProps {
@@ -12,10 +17,10 @@ interface NavProps {
 }
 
 const USER_LINKS = [
-    { href: '/', label: 'ホーム' },
-    { href: '/daily', label: '練習日誌' },
-    { href: '/story', label: '競泳物語' },
-    { href: '/timeline', label: '振り返り' },
+    { href: '/', label: 'ホーム', Icon: HouseIcon },
+    { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
+    { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
+    { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
 ] as const;
 
 const ADMIN_LINKS = [{ href: '/admin/users', label: 'ユーザー管理' }] as const;
@@ -64,6 +69,7 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
                             className="btn btn-secondary btn-small"
                             disabled={loggingOut}
                         >
+                            {!loggingOut && <SignOutIcon aria-hidden="true" size={18} weight="bold" />}
                             {loggingOut ? '処理中…' : 'ログアウト'}
                         </button>
                     </div>
@@ -87,6 +93,28 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
                 </nav>
                 {logoutError && <p className="nav-error" role="alert">{logoutError}</p>}
             </div>
+
+            {!isAdmin && (
+                <nav className="mobile-bottom-nav" aria-label="モバイルナビゲーション">
+                    {USER_LINKS.map((link) => {
+                        const isCurrent = link.href === '/'
+                            ? pathname === '/'
+                            : pathname === link.href || pathname.startsWith(`${link.href}/`);
+                        const Icon = link.Icon;
+                        return (
+                            <Link
+                                key={link.href}
+                                href={link.href}
+                                className={`mobile-bottom-link${isCurrent ? ' mobile-bottom-link-active' : ''}`}
+                                aria-current={isCurrent ? 'page' : undefined}
+                            >
+                                <Icon aria-hidden="true" size={24} weight={isCurrent ? 'fill' : 'regular'} />
+                                <span>{link.label}</span>
+                            </Link>
+                        );
+                    })}
+                </nav>
+            )}
         </header>
     );
 }

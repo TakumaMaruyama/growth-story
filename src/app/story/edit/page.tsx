@@ -11,8 +11,13 @@ import {
 } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
 import { parseStoryReadResponse, type StoryReadResponse } from '@/lib/story-read-response';
+import {
+    countAnsweredStoryQuestions,
+    resolveInitialStoryQuestionNo,
+} from '@/lib/story-question-navigation';
 import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
 import { loginHref } from '@/lib/return-path';
+import type { StoryQuestionNo } from '@/lib/story-questions';
 
 interface UserInfo {
     id: string;
@@ -121,6 +126,7 @@ export default function StoryEditPage() {
     const [serverState, setServerState] = useState<StoryFormState>({ answers: {}, note: '' });
     const [currentVersion, setCurrentVersion] = useState<number | null>(null);
     const [legacyAnswerCount, setLegacyAnswerCount] = useState(0);
+    const [activeQuestionNo, setActiveQuestionNo] = useState<StoryQuestionNo>(STORY_QUESTIONS[0].no);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [draftStorageAvailable, setDraftStorageAvailable] = useState(true);
@@ -144,6 +150,9 @@ export default function StoryEditPage() {
     );
     const hasOversizedAnswers = oversizedQuestions.length > 0;
     const hasReachedVersionLimit = currentVersion !== null && currentVersion >= MAX_STORY_VERSIONS;
+    const answeredQuestionCount = useMemo(() => countAnsweredStoryQuestions(answers), [answers]);
+    const activeQuestionIndex = STORY_QUESTIONS.findIndex((question) => question.no === activeQuestionNo);
+    const activeQuestion = STORY_QUESTIONS[activeQuestionIndex] ?? STORY_QUESTIONS[0];
     const confirmPageExit = useUnsavedChangesWarning(hasChanges);
 
     useEffect(() => {
@@ -186,6 +195,8 @@ export default function StoryEditPage() {
                 const nextServerState = { answers: serverAnswers, note: '' };
                 const saved = readDraft(draftKey(data.user.id));
                 const initialState = saved.draft ?? nextServerState;
+                const requestedQuestion = new URLSearchParams(window.location.search).get('question');
+                const initialQuestionNo = resolveInitialStoryQuestionNo(requestedQuestion, initialState.answers);
                 const hasStaleDraft = Boolean(
                     saved.draft
                     && saved.draft.baseVersion !== serverVersion,
@@ -195,6 +206,7 @@ export default function StoryEditPage() {
                 setUser(data.user);
                 setCurrentVersion(serverVersion);
                 setLegacyAnswerCount(data.story?.legacyAnswerCount ?? 0);
+                setActiveQuestionNo(initialQuestionNo);
                 setServerState(nextServerState);
                 setAnswers(initialState.answers);
                 setNote(initialState.note);
@@ -248,6 +260,11 @@ export default function StoryEditPage() {
         setAnswers({ ...serverState.answers });
         setNote(serverState.note);
         setSaveError('');
+    };
+
+    const selectQuestion = (questionNo: StoryQuestionNo) => {
+        setActiveQuestionNo(questionNo);
+        router.replace(`/story/edit?question=${questionNo}`, { scroll: false });
     };
 
     const handleSubmit = async (event: React.FormEvent) => {
@@ -374,34 +391,91 @@ export default function StoryEditPage() {
                             </div>
                         )}
 
-                        {STORY_QUESTIONS.map((question) => (
-                            <section key={question.no} className="card" aria-labelledby={`question-${question.no}`}>
-                                <h2 id={`question-${question.no}`} className="question-title">
-                                    Q{question.no}. {question.label}
-                                </h2>
-                                <textarea
-                                    id={`q${question.no}`}
-                                    className="form-textarea"
-                                    value={answers[question.no] ?? ''}
-                                    onChange={(event) => {
-                                        setAnswers((current) => ({ ...current, [question.no]: event.target.value }));
-                                        setSaveError('');
-                                    }}
-                                    placeholder="自由に書いてください"
-                                    maxLength={MAX_STORY_ANSWER_LENGTH}
+                        <section className="card story-question-progress-card" aria-labelledby="story-progress-heading">
+                            <div className="story-question-progress-header">
+                                <h2 id="story-progress-heading" className="section-title">競泳物語の進み具合</h2>
+                                <strong className="story-question-progress-text">
+                                    回答済み {answeredQuestionCount}/{STORY_QUESTIONS.length}
+                                </strong>
+                            </div>
+                            <progress
+                                className="story-question-progress"
+                                value={answeredQuestionCount}
+                                max={STORY_QUESTIONS.length}
+                                aria-label={`回答済み${answeredQuestionCount}/${STORY_QUESTIONS.length}`}
+                            />
+                            <div className="form-group story-question-picker">
+                                <label htmlFor="story-question-select" className="form-label">質問を選ぶ</label>
+                                <select
+                                    id="story-question-select"
+                                    className="form-input story-question-select"
+                                    value={activeQuestion.no}
+                                    onChange={(event) => selectQuestion(Number(event.target.value) as StoryQuestionNo)}
                                     disabled={saving}
-                                    aria-label={`Q${question.no}の回答`}
-                                    aria-invalid={(answers[question.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH}
-                                    aria-describedby={`q${question.no}-count`}
-                                />
-                                <p
-                                    id={`q${question.no}-count`}
-                                    className={(answers[question.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH ? 'error-message' : 'form-help'}
                                 >
-                                    {(answers[question.no] ?? '').length.toLocaleString('ja-JP')} / {MAX_STORY_ANSWER_LENGTH.toLocaleString('ja-JP')}文字
-                                </p>
-                            </section>
-                        ))}
+                                    {STORY_QUESTIONS.map((question) => (
+                                        <option key={question.no} value={question.no}>
+                                            Q{question.no}. {question.label}
+                                            {answers[question.no]?.trim() ? '（回答済み）' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="story-question-nav" aria-label="質問の移動">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary story-question-nav-button"
+                                    disabled={saving || activeQuestionIndex <= 0}
+                                    onClick={() => {
+                                        const previousQuestion = STORY_QUESTIONS[activeQuestionIndex - 1];
+                                        if (previousQuestion) selectQuestion(previousQuestion.no);
+                                    }}
+                                >
+                                    前へ
+                                </button>
+                                <span className="story-question-position" aria-live="polite">
+                                    Q{activeQuestion.no} / {STORY_QUESTIONS.length}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary story-question-nav-button"
+                                    disabled={saving || activeQuestionIndex >= STORY_QUESTIONS.length - 1}
+                                    onClick={() => {
+                                        const nextQuestion = STORY_QUESTIONS[activeQuestionIndex + 1];
+                                        if (nextQuestion) selectQuestion(nextQuestion.no);
+                                    }}
+                                >
+                                    次へ
+                                </button>
+                            </div>
+                        </section>
+
+                        <section className="card story-question-card" aria-labelledby={`question-${activeQuestion.no}`}>
+                            <h2 id={`question-${activeQuestion.no}`} className="question-title">
+                                Q{activeQuestion.no}. {activeQuestion.label}
+                            </h2>
+                            <textarea
+                                id={`q${activeQuestion.no}`}
+                                className="form-textarea story-question-answer"
+                                value={answers[activeQuestion.no] ?? ''}
+                                onChange={(event) => {
+                                    setAnswers((current) => ({ ...current, [activeQuestion.no]: event.target.value }));
+                                    setSaveError('');
+                                }}
+                                placeholder="自由に書いてください"
+                                maxLength={MAX_STORY_ANSWER_LENGTH}
+                                disabled={saving}
+                                aria-label={`Q${activeQuestion.no}の回答`}
+                                aria-invalid={(answers[activeQuestion.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH}
+                                aria-describedby={`q${activeQuestion.no}-count`}
+                            />
+                            <p
+                                id={`q${activeQuestion.no}-count`}
+                                className={(answers[activeQuestion.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH ? 'error-message' : 'form-help'}
+                            >
+                                {(answers[activeQuestion.no] ?? '').length.toLocaleString('ja-JP')} / {MAX_STORY_ANSWER_LENGTH.toLocaleString('ja-JP')}文字
+                            </p>
+                        </section>
 
                         <section className="card" aria-labelledby="note-heading">
                             <h2 id="note-heading" className="section-title">今回の保存メモ</h2>

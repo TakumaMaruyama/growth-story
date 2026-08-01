@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { createSession } from '../lib/auth';
-import { DailyLogConflictError, saveDailyLog } from '../lib/daily-log-service';
+import {
+    countEligibleDailyLogs,
+    DailyLogConflictError,
+    saveDailyLog,
+} from '../lib/daily-log-service';
 import { prisma } from '../lib/prisma';
 import { consumeRateLimits } from '../lib/rate-limit';
 import { hashSessionToken } from '../lib/session-token';
@@ -156,6 +160,60 @@ test('security database invariants', async (context) => {
             assert.ok(winningWrite);
             assert.equal(storedLog.goodText, winningWrite.goodText);
             assert.equal(storedLog.tomorrowText, winningWrite.tomorrowText);
+        } finally {
+            await prisma.user.delete({ where: { id: user.id } });
+        }
+    });
+
+    await context.test('eligible daily-log count excludes future dates and does not grow on same-day edits', async () => {
+        const user = await prisma.user.create({
+            data: {
+                loginId: `integration_${randomUUID()}`,
+                displayName: 'Daily log milestone count test',
+                passwordHash: 'not-used-by-this-test',
+            },
+            select: { id: true },
+        });
+        const throughDate = new Date('2026-01-15T00:00:00.000Z');
+        const futureDate = new Date('2026-01-16T00:00:00.000Z');
+
+        try {
+            await saveDailyLog({
+                userId: user.id,
+                logDate: throughDate,
+                baseRevision: null,
+                score: 6,
+                practiced: true,
+                goodText: null,
+                improveText: null,
+                tomorrowText: null,
+            });
+            await saveDailyLog({
+                userId: user.id,
+                logDate: futureDate,
+                baseRevision: null,
+                score: 7,
+                practiced: true,
+                goodText: null,
+                improveText: null,
+                tomorrowText: null,
+            });
+
+            assert.equal(await countEligibleDailyLogs(user.id, throughDate), 1);
+
+            await saveDailyLog({
+                userId: user.id,
+                logDate: throughDate,
+                baseRevision: 1,
+                score: 8,
+                practiced: false,
+                goodText: null,
+                improveText: null,
+                tomorrowText: null,
+            });
+
+            assert.equal(await countEligibleDailyLogs(user.id, throughDate), 1);
+            assert.equal(await prisma.dailyLog.count({ where: { userId: user.id } }), 2);
         } finally {
             await prisma.user.delete({ where: { id: user.id } });
         }

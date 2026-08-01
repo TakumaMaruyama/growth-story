@@ -10,6 +10,7 @@ async function main() {
         'users',
         'sessions',
         'daily_logs',
+        'competition_goals',
         'story_versions',
         'story_answers',
         'rate_limit_events',
@@ -82,6 +83,13 @@ async function main() {
         'story_answers_question_no_check',
         'story_answers_text_length_check',
         'story_versions_note_length_check',
+        'competition_goals_revision_check',
+        'competition_goals_title_length_check',
+        'competition_goals_details_length_check',
+        'competition_goals_target_date_check',
+        'competition_goals_required_date_check',
+        'competition_goals_annual_year_check',
+        'competition_goals_active_archive_check',
     ];
     const constraints = await pool.query<{ conname: string }>(
         `SELECT conname
@@ -92,6 +100,14 @@ async function main() {
     const constraintNames = new Set(constraints.rows.map((row) => row.conname));
     for (const constraint of requiredConstraints) {
         if (!constraintNames.has(constraint)) throw new Error(`Database constraint is missing: ${constraint}`);
+    }
+
+    const singletonGoalIndex = await pool.query<{ index_name: string | null }>(
+        'SELECT to_regclass($1)::text AS index_name',
+        ['public.competition_goals_one_active_singleton_per_user_key'],
+    );
+    if (!singletonGoalIndex.rows[0]?.index_name) {
+        throw new Error('Competition goal singleton index is missing');
     }
 
     console.log('Database schema verified.');
