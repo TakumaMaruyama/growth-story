@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import { jsonResponse } from '@/lib/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +18,33 @@ function identifyError(value: unknown): ErrorIdentity {
   return { name: null, code: null };
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function htmlResponse(payload: Record<string, unknown>, status: number): Response {
+  const body = escapeHtml(JSON.stringify(payload, null, 2));
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>deploy-db-check</title></head><body><pre>${body}</pre></body></html>`;
+  return new Response(html, {
+    status,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 export async function GET() {
   const databaseUrl = process.env.DATABASE_URL;
   const databaseUrlPresent = Boolean(databaseUrl);
 
   if (!databaseUrl) {
-    return jsonResponse({ databaseUrlPresent, ok: false, error: null, cause: null }, 500);
+    return htmlResponse({ databaseUrlPresent, ok: false, error: null, cause: null }, 500);
   }
 
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -37,17 +57,17 @@ export async function GET() {
          has_table_privilege(current_user, 'public.rate_limit_events', 'SELECT,INSERT,DELETE') AS rate_limit_rw`,
     );
     const row = result.rows[0] ?? {};
-    return jsonResponse({
+    return htmlResponse({
       databaseUrlPresent,
       ok: row.ok === 1,
       readOnly: row.read_only ?? null,
       usersRw: row.users_rw ?? null,
       rateLimitRw: row.rate_limit_rw ?? null,
-    });
+    }, 200);
   } catch (error) {
     const err = identifyError(error);
     const cause = identifyError(error instanceof Error ? error.cause : undefined);
-    return jsonResponse({ databaseUrlPresent, ok: false, error: err, cause }, 500);
+    return htmlResponse({ databaseUrlPresent, ok: false, error: err, cause }, 500);
   } finally {
     await pool.end().catch(() => undefined);
   }
