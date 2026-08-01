@@ -3,9 +3,37 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { formatJSTDisplay, parseDateOnly, todayJST } from '@/lib/date';
+import { getCompetitionGoalDisplayValues } from '@/lib/competition-goal-display';
 import Nav from '@/components/Nav';
 
 export const metadata: Metadata = { title: 'ホーム' };
+
+function HomeGoalSummary({
+  meetName,
+  dateText,
+  goalText,
+}: {
+  meetName: string;
+  dateText: string;
+  goalText: string;
+}) {
+  return (
+    <dl className="goal-display-list goal-display-list-home">
+      <div>
+        <dt>大会名</dt>
+        <dd>{meetName || '未設定'}</dd>
+      </div>
+      <div>
+        <dt>日付</dt>
+        <dd>{dateText}</dd>
+      </div>
+      <div>
+        <dt>目標</dt>
+        <dd>{goalText || '未設定'}</dd>
+      </div>
+    </dl>
+  );
+}
 
 export default async function HomePage() {
   const user = await requireUser();
@@ -29,7 +57,7 @@ export default async function HomePage() {
     prisma.competitionGoal.findMany({
       where: { userId: user.id, isActive: true },
       orderBy: [{ targetDate: 'asc' }, { updatedAt: 'desc' }],
-      select: { type: true, title: true, targetDate: true },
+      select: { type: true, title: true, details: true, targetDate: true },
     }),
   ]);
 
@@ -37,6 +65,15 @@ export default async function HomePage() {
   const annualGoal = competitionGoals.find((goal) => goal.type === 'ANNUAL');
   const nextMilestone = competitionGoals.find((goal) => goal.type === 'MILESTONE');
   const milestoneCount = competitionGoals.filter((goal) => goal.type === 'MILESTONE').length;
+  const nextMeetDisplay = nextMeetGoal
+    ? getCompetitionGoalDisplayValues(nextMeetGoal)
+    : null;
+  const annualDisplay = annualGoal
+    ? getCompetitionGoalDisplayValues(annualGoal)
+    : null;
+  const milestoneDisplay = nextMilestone
+    ? getCompetitionGoalDisplayValues(nextMilestone)
+    : null;
 
   return (
     <>
@@ -86,35 +123,34 @@ export default async function HomePage() {
             <div className="summary-grid">
               <div className="summary-item">
                 <p className="summary-label">次の大会</p>
-                {nextMeetGoal ? (
-                  <>
-                    <p className="question-title">{nextMeetGoal.title}</p>
-                    <p className="muted">
-                      {nextMeetGoal.targetDate ? formatJSTDisplay(nextMeetGoal.targetDate) : '大会日は未定'}
-                    </p>
-                  </>
+                {nextMeetGoal && nextMeetDisplay ? (
+                  <HomeGoalSummary
+                    meetName={nextMeetDisplay.meetName}
+                    dateText={nextMeetGoal.targetDate ? formatJSTDisplay(nextMeetGoal.targetDate) : '未定'}
+                    goalText={nextMeetDisplay.goalText}
+                  />
                 ) : <p className="muted">まだ設定されていません</p>}
               </div>
               <div className="summary-item">
                 <p className="summary-label">年間目標</p>
-                {annualGoal ? (
-                  <>
-                    <p className="question-title">{annualGoal.title}</p>
-                    <p className="muted">
-                      {annualGoal.targetDate ? `${annualGoal.targetDate.getUTCFullYear()}年の目標` : '対象年は未設定'}
-                    </p>
-                  </>
+                {annualGoal && annualDisplay ? (
+                  <HomeGoalSummary
+                    meetName={annualDisplay.meetName}
+                    dateText={annualGoal.targetDate ? `${annualGoal.targetDate.getUTCFullYear()}年` : '未設定'}
+                    goalText={annualDisplay.goalText}
+                  />
                 ) : <p className="muted">まだ設定されていません</p>}
               </div>
               <div className="summary-item">
                 <p className="summary-label">期限つき目標</p>
-                {nextMilestone ? (
+                {nextMilestone && milestoneDisplay ? (
                   <>
-                    <p className="question-title">{nextMilestone.title}</p>
-                    <p className="muted">
-                      {nextMilestone.targetDate && `${formatJSTDisplay(nextMilestone.targetDate)}まで`}
-                      {milestoneCount > 1 && `・ほか${milestoneCount - 1}件`}
-                    </p>
+                    <HomeGoalSummary
+                      meetName={milestoneDisplay.meetName}
+                      dateText={nextMilestone.targetDate ? `${formatJSTDisplay(nextMilestone.targetDate)}まで` : '未設定'}
+                      goalText={milestoneDisplay.goalText}
+                    />
+                    {milestoneCount > 1 && <p className="muted goal-more-count">ほか{milestoneCount - 1}件</p>}
                   </>
                 ) : <p className="muted">まだ設定されていません</p>}
               </div>

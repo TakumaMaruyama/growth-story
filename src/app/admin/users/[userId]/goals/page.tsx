@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
 import { requireAdmin } from '@/lib/auth';
+import { getCompetitionGoalDisplayValues } from '@/lib/competition-goal-display';
 import { formatJSTDateTime, formatJSTDisplay } from '@/lib/date';
 import { prisma } from '@/lib/prisma';
 
@@ -55,31 +56,42 @@ export default async function AdminUserGoalsPage({ params }: Props) {
     const activeGoals = goals.filter((goal) => goal.isActive);
     const archivedGoals = goals.filter((goal) => !goal.isActive);
 
-    const renderGoal = (goal: (typeof goals)[number]) => (
-        <article key={goal.id} className="summary-item stack">
-            <div>
+    const renderGoal = (goal: (typeof goals)[number]) => {
+        const displayGoal = getCompetitionGoalDisplayValues(goal);
+        const target = goal.targetDate
+            ? goal.type === 'ANNUAL'
+                ? `${goal.targetDate.getUTCFullYear()}年`
+                : `${formatJSTDisplay(goal.targetDate)}${goal.type === 'MILESTONE' ? 'まで' : ''}`
+            : '未設定';
+        return (
+            <article key={goal.id} className="summary-item stack">
                 <div className="button-row" style={{ justifyContent: 'space-between' }}>
                     <p className="eyebrow">{GOAL_LABELS[goal.type]}</p>
                     <span className={`badge ${goal.isActive ? 'badge-primary' : 'badge-secondary'}`}>
                         {goal.isActive ? '設定中' : '過去の目標'}
                     </span>
                 </div>
-                <h3 className="question-title">{goal.title}</h3>
-                {goal.targetDate && (
-                    <p className="muted">
-                        {goal.type === 'ANNUAL'
-                            ? `${goal.targetDate.getUTCFullYear()}年`
-                            : `${formatJSTDisplay(goal.targetDate)}${goal.type === 'MILESTONE' ? 'まで' : ''}`}
-                    </p>
-                )}
-            </div>
-            {goal.details && <p style={{ whiteSpace: 'pre-wrap' }}>{goal.details}</p>}
-            <p className="muted">
-                最終更新 {formatJSTDateTime(goal.updatedAt)}
-                {goal.archivedAt && `・移動 ${formatJSTDateTime(goal.archivedAt)}`}
-            </p>
-        </article>
-    );
+                <dl className="goal-display-list">
+                    <div>
+                        <dt>大会名</dt>
+                        <dd>{displayGoal.meetName || '未設定'}</dd>
+                    </div>
+                    <div>
+                        <dt>日付</dt>
+                        <dd>{target}</dd>
+                    </div>
+                    <div>
+                        <dt>目標</dt>
+                        <dd>{displayGoal.goalText || '未設定'}</dd>
+                    </div>
+                </dl>
+                <p className="muted">
+                    最終更新 {formatJSTDateTime(goal.updatedAt)}
+                    {goal.archivedAt && `・移動 ${formatJSTDateTime(goal.archivedAt)}`}
+                </p>
+            </article>
+        );
+    };
 
     return (
         <>
