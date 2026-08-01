@@ -188,6 +188,7 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
                         <p>まだ記録がありません。</p>
                         <div className="button-row" style={{ justifyContent: 'center' }}>
                             <Link href="/daily" className="btn btn-primary">練習日誌を書く</Link>
+                            <Link href="/goals" className="btn btn-secondary">大会目標を決める</Link>
                             <Link href="/story/edit" className="btn btn-secondary">競泳物語を書く</Link>
                         </div>
                     </div>

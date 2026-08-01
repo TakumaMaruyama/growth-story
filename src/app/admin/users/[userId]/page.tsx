@@ -81,16 +81,16 @@ export default async function AdminUserDetailPage({ params }: Props) {
                         <h2 id="summary-heading" className="section-title">記録サマリー</h2>
                         <div className="summary-grid">
                             <div>
-                                <p className="summary-label">日誌</p>
+                                <p className="summary-label">練習日誌</p>
                                 <p className="summary-value">{targetUser._count.dailyLogs}</p>
-                            </div>
-                            <div>
-                                <p className="summary-label">物語の更新</p>
-                                <p className="summary-value">{targetUser._count.storyVersions}</p>
                             </div>
                             <div>
                                 <p className="summary-label">大会目標</p>
                                 <p className="summary-value">{targetUser._count.competitionGoals}</p>
+                            </div>
+                            <div>
+                                <p className="summary-label">競泳物語</p>
+                                <p className="summary-value">{targetUser._count.storyVersions}</p>
                             </div>
                         </div>
                     </section>
@@ -109,15 +109,6 @@ export default async function AdminUserDetailPage({ params }: Props) {
                             ) : <p className="muted">記録なし</p>}
                         </div>
                         <div className="summary-item">
-                            <h3 className="question-title">競泳物語</h3>
-                            {latestStory ? (
-                                <>
-                                    <p>Ver.{latestStory.version}</p>
-                                    <p className="muted">{formatJSTDisplay(latestStory.createdAt)} 更新</p>
-                                </>
-                            ) : <p className="muted">記録なし</p>}
-                        </div>
-                        <div className="summary-item">
                             <h3 className="question-title">大会目標</h3>
                             {primaryGoal ? (
                                 <>
@@ -129,15 +120,24 @@ export default async function AdminUserDetailPage({ params }: Props) {
                                 </>
                             ) : <p className="muted">記録なし</p>}
                         </div>
+                        <div className="summary-item">
+                            <h3 className="question-title">競泳物語</h3>
+                            {latestStory ? (
+                                <>
+                                    <p>Ver.{latestStory.version}</p>
+                                    <p className="muted">{formatJSTDisplay(latestStory.createdAt)} 更新</p>
+                                </>
+                            ) : <p className="muted">記録なし</p>}
+                        </div>
                     </div>
                 </section>
 
                 <section className="card" aria-labelledby="details-heading">
                     <h2 id="details-heading" className="section-title">詳細を見る</h2>
                     <div className="button-row">
-                        <Link href={`/admin/users/${userId}/daily`} className="btn btn-secondary">日誌一覧</Link>
-                        <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">物語履歴</Link>
+                        <Link href={`/admin/users/${userId}/daily`} className="btn btn-secondary">練習日誌一覧</Link>
                         <Link href={`/admin/users/${userId}/goals`} className="btn btn-secondary">大会目標</Link>
+                        <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">競泳物語履歴</Link>
                     </div>
                 </section>
             </main>

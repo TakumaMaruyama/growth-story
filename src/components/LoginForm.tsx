@@ -59,7 +59,9 @@ export default function LoginForm({ adminOnly = false, returnTo = null }: LoginF
                     <p className="eyebrow" style={{ marginTop: '0.75rem' }}>My swim story</p>
                     <h1 className="page-title">{adminOnly ? '管理者ログイン' : '私の競泳物語'}</h1>
                     <p className="muted">
-                        {adminOnly ? '管理者アカウントでログインしてください。' : '練習と競泳人生を、自分の言葉で残す場所。'}
+                        {adminOnly
+                            ? '管理者アカウントでログインしてください。'
+                            : '練習日誌、大会目標、競泳物語を、自分の言葉で残す場所。'}
                     </p>
                 </div>
 

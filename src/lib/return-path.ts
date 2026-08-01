@@ -10,6 +10,7 @@ function isAllowedPath(pathname: string, scope: ReturnPathScope): boolean {
 
     return pathname === '/'
         || pathname === '/daily'
+        || pathname === '/goals'
         || pathname === '/story'
         || pathname.startsWith('/story/')
         || pathname === '/timeline';

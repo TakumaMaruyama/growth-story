@@ -53,7 +53,7 @@ function RegisterPageContent() {
                     <span className="brand-mark" aria-hidden="true">S</span>
                     <p className="eyebrow" style={{ marginTop: '0.75rem' }}>Join</p>
                     <h1 className="page-title">アカウントを作る</h1>
-                    <p className="muted">あなた自身の練習日誌と競泳物語を始めましょう。</p>
+                    <p className="muted">あなた自身の練習日誌、大会目標、競泳物語を始めましょう。</p>
                 </div>
 
                 <div className="card">

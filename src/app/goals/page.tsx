@@ -23,6 +23,7 @@ import {
     MAX_GOAL_DETAILS_LENGTH,
     MAX_GOAL_TITLE_LENGTH,
 } from '@/lib/limits';
+import { loginHref } from '@/lib/return-path';
 import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
 
 type GoalType = 'next_meet' | 'annual' | 'milestone';
@@ -445,7 +446,7 @@ export default function GoalsPage() {
                 } | null;
 
                 if (response.status === 401) {
-                    router.replace('/login');
+                    router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
                 if (response.status === 403) {
@@ -617,7 +618,7 @@ export default function GoalsPage() {
             } | null;
 
             if (response.status === 401) {
-                router.replace('/login');
+                router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
             }
             if (response.status === 409) {
@@ -710,7 +711,7 @@ export default function GoalsPage() {
             } | null;
 
             if (response.status === 401) {
-                router.replace('/login');
+                router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
             }
             if (response.status === 409) {
@@ -781,7 +782,7 @@ export default function GoalsPage() {
             } | null;
 
             if (response.status === 401) {
-                router.replace('/login');
+                router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
             }
             if (response.status === 409) {

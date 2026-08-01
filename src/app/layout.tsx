@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     default: "私の競泳物語",
     template: "%s | 私の競泳物語",
   },
-  description: "日々の練習と競泳人生を、自分の言葉で記録するアプリ",
+  description: "練習日誌、大会目標、競泳物語を、自分の言葉で記録するアプリ",
   robots: { index: false, follow: false },
 };
 
