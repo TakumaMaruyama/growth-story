@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { MIN_PASSWORD_LENGTH } from '@/lib/limits';
+import { MIN_USER_PASSWORD_LENGTH } from '@/lib/limits';
 import { loginHref, sanitizeReturnPath } from '@/lib/return-path';
 
 function RegisterPageContent() {
@@ -100,12 +100,14 @@ function RegisterPageContent() {
                                 value={password}
                                 onChange={(event) => setPassword(event.target.value)}
                                 required
-                                minLength={MIN_PASSWORD_LENGTH}
+                                minLength={MIN_USER_PASSWORD_LENGTH}
                                 autoComplete="new-password"
                                 disabled={loading}
                                 aria-describedby="password-help"
                             />
-                            <p id="password-help" className="form-help">{MIN_PASSWORD_LENGTH}文字以上で設定してください。</p>
+                            <p id="password-help" className="form-help">
+                                {MIN_USER_PASSWORD_LENGTH}文字以上。英数字のみでも設定できます。
+                            </p>
                         </div>
 
                         <div className="form-group">
@@ -117,7 +119,7 @@ function RegisterPageContent() {
                                 value={confirmPassword}
                                 onChange={(event) => setConfirmPassword(event.target.value)}
                                 required
-                                minLength={MIN_PASSWORD_LENGTH}
+                                minLength={MIN_USER_PASSWORD_LENGTH}
                                 autoComplete="new-password"
                                 disabled={loading}
                             />

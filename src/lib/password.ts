@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from './limits';
+import { MAX_PASSWORD_BYTES, MIN_USER_PASSWORD_LENGTH } from './limits';
 
 export const PASSWORD_SALT_ROUNDS = 12;
 const DUMMY_PASSWORD_HASH_10 = '$2b$10$8DV33TniVs1tV5octwGlWeJjGdFMr97ASVu3MkBw0W.1aDE/Gl3X2';
@@ -41,9 +41,12 @@ export async function verifyPasswordWithTimingPadding(
   };
 }
 
-export function getPasswordValidationError(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `パスワードは${MIN_PASSWORD_LENGTH}文字以上で入力してください`;
+export function getPasswordValidationError(
+  password: string,
+  minimumLength = MIN_USER_PASSWORD_LENGTH,
+): string | null {
+  if (password.length < minimumLength) {
+    return `パスワードは${minimumLength}文字以上で入力してください`;
   }
 
   if (new TextEncoder().encode(password).byteLength > MAX_PASSWORD_BYTES) {

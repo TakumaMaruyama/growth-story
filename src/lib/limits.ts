@@ -1,6 +1,7 @@
 export const MAX_LOGIN_ID_LENGTH = 64;
 export const MAX_DISPLAY_NAME_LENGTH = 80;
-export const MIN_PASSWORD_LENGTH = 10;
+export const MIN_USER_PASSWORD_LENGTH = 8;
+export const MIN_ADMIN_PASSWORD_LENGTH = 10;
 export const MAX_PASSWORD_BYTES = 72;
 export const MAX_DAILY_TEXT_LENGTH = 2_000;
 export const MAX_STORY_ANSWER_LENGTH = 4_000;

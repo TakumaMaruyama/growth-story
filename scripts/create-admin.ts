@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { MIN_ADMIN_PASSWORD_LENGTH } from '../src/lib/limits';
 import { hashPassword } from '../src/lib/password';
 import { parseAccountInput } from '../src/lib/validation';
 
@@ -26,7 +27,10 @@ async function main() {
         process.exit(1);
     }
 
-    const input = parseAccountInput({ loginId, displayName, password });
+    const input = parseAccountInput(
+        { loginId, displayName, password },
+        { minimumPasswordLength: MIN_ADMIN_PASSWORD_LENGTH },
+    );
     if (!input.ok) {
         console.error(`Error: ${input.error}`);
         process.exit(1);
