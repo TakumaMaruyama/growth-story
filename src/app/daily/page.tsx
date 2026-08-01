@@ -596,9 +596,8 @@ function DailyLogPageContent() {
                                     <p className="milestone-record-count">日誌を残した日 {eligibleRecordCount}日</p>
                                 </div>
                                 <div className="milestone-preview" aria-label={badgeProgress.nextMilestone ? `${badgeProgress.nextMilestone}回記録バッジ` : '200回記録バッジ'}>
-                                    <span className="milestone-icon-stack" aria-hidden="true">
+                                    <span className="milestone-icon" aria-hidden="true">
                                         <MedalIcon size={62} weight="duotone" />
-                                        <PersonSimpleSwimIcon size={28} weight="bold" />
                                     </span>
                                     <span>
                                         <strong>{badgeProgress.nextMilestone ?? 200}回記録</strong>
@@ -620,7 +619,17 @@ function DailyLogPageContent() {
                                     <span className="required-chip">必須</span>
                                     <p>数字が大きいほど良い状態です</p>
                                 </div>
-                                <div className="score-options" role="radiogroup" aria-labelledby="condition-heading">
+                                <div className="score-scale" id="condition-scale">
+                                    <span><strong>1</strong> とてもきつい</span>
+                                    <span><strong>5〜6</strong> ふつう</span>
+                                    <span><strong>10</strong> とても良い</span>
+                                </div>
+                                <div
+                                    className="score-options"
+                                    role="radiogroup"
+                                    aria-labelledby="condition-heading"
+                                    aria-describedby="condition-scale"
+                                >
                                     {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
                                         <label key={score} className={`score-option${log.score === score ? ' score-option-selected' : ''}`}>
                                             <input
@@ -635,11 +644,6 @@ function DailyLogPageContent() {
                                             <span>{score}</span>
                                         </label>
                                     ))}
-                                </div>
-                                <div className="score-scale" aria-hidden="true">
-                                    <span>とてもきつい</span>
-                                    <span>ふつう</span>
-                                    <span>とても良い</span>
                                 </div>
                             </section>
 

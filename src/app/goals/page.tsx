@@ -15,6 +15,10 @@ import { TrophyIcon } from '@phosphor-icons/react/dist/csr/Trophy';
 import Nav from '@/components/Nav';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
 import {
+    getCompetitionGoalDisplayValues,
+    getCompetitionGoalFieldMapping,
+} from '@/lib/competition-goal-display';
+import {
     MAX_ACTIVE_MILESTONE_GOALS,
     MAX_GOAL_DETAILS_LENGTH,
     MAX_GOAL_TITLE_LENGTH,
@@ -281,105 +285,117 @@ function GoalFields({ form, idPrefix, variant, disabled, onChange }: GoalFieldsP
     }
     const labels = variant === 'next_meet'
         ? {
-            title: 'この大会での目標',
-            titlePlaceholder: '例）100m自由形で59秒台を出す',
-            details: '大会名・種目など（任意）',
-            detailsPlaceholder: '例）秋季記録会・100m自由形',
+            meetName: '大会名・種目など（任意）',
+            meetNamePlaceholder: '例）秋季記録会・100m自由形',
             date: '大会日（任意）',
+            goal: 'この大会での目標',
+            goalPlaceholder: '例）100m自由形で59秒台を出す',
         }
         : variant === 'annual'
             ? {
-                title: '年間の大会目標',
-                titlePlaceholder: '例）全国大会で決勝に残る',
-                details: '達成のために意識すること（任意）',
-                detailsPlaceholder: '例）春までに持久力、夏までにレース後半を強化する',
+                meetName: '大会名（任意）',
+                meetNamePlaceholder: '例）日本マスターズ水泳選手権',
                 date: '対象年',
+                goal: '年間の大会目標',
+                goalPlaceholder: '例）全国大会で決勝に残る',
             }
             : {
-                title: '出場したい大会',
-                titlePlaceholder: '例）日本選手権',
-                details: '出場に向けたメモ（任意）',
-                detailsPlaceholder: '例）100m自由形の標準記録を突破する',
+                meetName: '大会名',
+                meetNamePlaceholder: '例）日本選手権',
                 date: 'いつまでに',
+                goal: 'この大会に出るための目標（任意）',
+                goalPlaceholder: '例）100m自由形の標準記録を突破する',
             };
+    const { meetNameField, goalTextField } = getCompetitionGoalFieldMapping(variant);
+    const meetName = form[meetNameField];
+    const goalText = form[goalTextField];
+    const meetNameLimit = meetNameField === 'title'
+        ? MAX_GOAL_TITLE_LENGTH
+        : MAX_GOAL_DETAILS_LENGTH;
+    const goalTextLimit = goalTextField === 'title'
+        ? MAX_GOAL_TITLE_LENGTH
+        : MAX_GOAL_DETAILS_LENGTH;
+    const meetNameRequired = meetNameField === 'title';
+    const goalTextRequired = goalTextField === 'title';
 
     return (
         <div className="goal-fields">
             <div className="form-group">
-                <label className="form-label" htmlFor={`${idPrefix}-title`}>
-                    {labels.title} <span className="required-chip">必須</span>
+                <label className="form-label" htmlFor={`${idPrefix}-meet-name`}>
+                    {labels.meetName}
+                    {meetNameRequired && <span className="required-chip">必須</span>}
                 </label>
                 <input
-                    id={`${idPrefix}-title`}
+                    id={`${idPrefix}-meet-name`}
                     className="form-input goal-title-input"
-                    value={form.title}
-                    onChange={(event) => onChange('title', event.target.value)}
-                    placeholder={labels.titlePlaceholder}
-                    maxLength={MAX_GOAL_TITLE_LENGTH}
+                    value={meetName}
+                    onChange={(event) => onChange(meetNameField, event.target.value)}
+                    placeholder={labels.meetNamePlaceholder}
+                    maxLength={meetNameLimit}
                     disabled={disabled}
-                    required
+                    required={meetNameRequired}
                 />
                 <p className="form-help goal-character-count">
-                    {form.title.length}/{MAX_GOAL_TITLE_LENGTH}文字
+                    {meetName.length}/{meetNameLimit.toLocaleString('ja-JP')}文字
                 </p>
             </div>
 
-            <div className="goal-field-row">
-                <div className="form-group goal-date-field">
-                    <label className="form-label" htmlFor={`${idPrefix}-date`}>
-                        <CalendarBlankIcon aria-hidden="true" size={18} weight="bold" />
-                        {labels.date}
-                        {(variant === 'annual' || variant === 'milestone') && <span className="required-chip">必須</span>}
-                    </label>
-                    {variant === 'annual' ? (
-                        <select
-                            id={`${idPrefix}-date`}
-                            className="form-input"
-                            value={annualYear}
-                            onChange={(event) => onChange(
-                                'targetDate',
-                                event.target.value ? `${event.target.value}-12-31` : '',
-                            )}
-                            disabled={disabled}
-                            required
-                        >
-                            <option value="">年を選択</option>
-                            {annualYears.map((year) => (
-                                <option key={year} value={year}>{year}年</option>
-                            ))}
-                        </select>
-                    ) : (
-                        <input
-                            id={`${idPrefix}-date`}
-                            type="date"
-                            className="form-input"
-                            value={form.targetDate}
-                            onChange={(event) => onChange('targetDate', event.target.value)}
-                            min="1970-01-01"
-                            max="2100-12-31"
-                            disabled={disabled}
-                            required={variant === 'milestone'}
-                        />
-                    )}
-                </div>
-
-                <div className="form-group goal-details-field">
-                    <label className="form-label" htmlFor={`${idPrefix}-details`}>
-                        {labels.details}
-                    </label>
-                    <textarea
-                        id={`${idPrefix}-details`}
-                        className="form-textarea goal-details-input"
-                        value={form.details}
-                        onChange={(event) => onChange('details', event.target.value)}
-                        placeholder={labels.detailsPlaceholder}
-                        maxLength={MAX_GOAL_DETAILS_LENGTH}
+            <div className="form-group goal-date-field">
+                <label className="form-label" htmlFor={`${idPrefix}-date`}>
+                    <CalendarBlankIcon aria-hidden="true" size={18} weight="bold" />
+                    {labels.date}
+                    {(variant === 'annual' || variant === 'milestone') && <span className="required-chip">必須</span>}
+                </label>
+                {variant === 'annual' ? (
+                    <select
+                        id={`${idPrefix}-date`}
+                        className="form-input"
+                        value={annualYear}
+                        onChange={(event) => onChange(
+                            'targetDate',
+                            event.target.value ? `${event.target.value}-12-31` : '',
+                        )}
                         disabled={disabled}
+                        required
+                    >
+                        <option value="">年を選択</option>
+                        {annualYears.map((year) => (
+                            <option key={year} value={year}>{year}年</option>
+                        ))}
+                    </select>
+                ) : (
+                    <input
+                        id={`${idPrefix}-date`}
+                        type="date"
+                        className="form-input"
+                        value={form.targetDate}
+                        onChange={(event) => onChange('targetDate', event.target.value)}
+                        min="1970-01-01"
+                        max="2100-12-31"
+                        disabled={disabled}
+                        required={variant === 'milestone'}
                     />
-                    <p className="form-help goal-character-count">
-                        {form.details.length}/{MAX_GOAL_DETAILS_LENGTH.toLocaleString('ja-JP')}文字
-                    </p>
-                </div>
+                )}
+            </div>
+
+            <div className="form-group goal-details-field">
+                <label className="form-label" htmlFor={`${idPrefix}-goal`}>
+                    {labels.goal}
+                    {goalTextRequired && <span className="required-chip">必須</span>}
+                </label>
+                <textarea
+                    id={`${idPrefix}-goal`}
+                    className="form-textarea goal-details-input"
+                    value={goalText}
+                    onChange={(event) => onChange(goalTextField, event.target.value)}
+                    placeholder={labels.goalPlaceholder}
+                    maxLength={goalTextLimit}
+                    disabled={disabled}
+                    required={goalTextRequired}
+                />
+                <p className="form-help goal-character-count">
+                    {goalText.length}/{goalTextLimit.toLocaleString('ja-JP')}文字
+                </p>
             </div>
         </div>
     );
@@ -982,6 +998,7 @@ export default function GoalsPage() {
                             const key = `milestone-${goal.id}`;
                             const baselineGoal = baselineForms.milestones.find((item) => item.id === goal.id);
                             const changed = !baselineGoal || !goalFormsEqual(goal, baselineGoal);
+                            const displayGoal = getCompetitionGoalDisplayValues(goal);
                             return (
                                 <form
                                     key={goal.id}
@@ -995,7 +1012,7 @@ export default function GoalsPage() {
                                     <div className="goal-milestone-heading">
                                         <div>
                                             <p className="goal-number">GOAL {index + 1}</p>
-                                            <h3 id={`${key}-heading`}>{goal.title || '大会への目標'}</h3>
+                                            <h3 id={`${key}-heading`}>{displayGoal.meetName || '大会名未設定'}</h3>
                                         </div>
                                         {goal.targetDate && (
                                             <span className="goal-deadline-badge">
@@ -1049,7 +1066,7 @@ export default function GoalsPage() {
                             </span>
                             <div>
                                 <h3 id="new-milestone-heading">大会への目標を追加</h3>
-                                <p className="muted">「いつまでに」と「出場したい大会」だけで追加できます。</p>
+                                <p className="muted">大会名、日付、目標の順に入力できます。</p>
                             </div>
                         </div>
                         <GoalFields
@@ -1095,23 +1112,35 @@ export default function GoalsPage() {
                         <div className="goals-history-list">
                             {archivedGoals.map((goal) => {
                                 const target = formatGoalTarget(goal);
+                                const displayGoal = getCompetitionGoalDisplayValues(goal);
                                 return (
                                     <article key={goal.id} className="goal-history-item">
                                         <div className="goal-history-heading">
                                             <div>
                                                 <p className="goal-card-kicker">{GOAL_TYPE_LABELS[goal.type]}</p>
-                                                <h3>{goal.title}</h3>
                                             </div>
-                                            {target && <span className="goal-deadline-badge">{target}</span>}
                                         </div>
-                                        {goal.details && <p>{goal.details}</p>}
+                                        <dl className="goal-display-list">
+                                            <div>
+                                                <dt>大会名</dt>
+                                                <dd>{displayGoal.meetName || '未設定'}</dd>
+                                            </div>
+                                            <div>
+                                                <dt>日付</dt>
+                                                <dd>{target || '未設定'}</dd>
+                                            </div>
+                                            <div>
+                                                <dt>目標</dt>
+                                                <dd>{displayGoal.goalText || '未設定'}</dd>
+                                            </div>
+                                        </dl>
                                         <div className="goal-history-actions">
                                             <button
                                                 type="button"
                                                 className="btn btn-secondary btn-small goal-delete-button"
                                                 onClick={() => void deleteArchivedGoal(goal)}
                                                 disabled={busy}
-                                                aria-label={`${goal.title}を完全に削除`}
+                                                aria-label={`${displayGoal.meetName || '大会目標'}を完全に削除`}
                                             >
                                                 <TrashIcon aria-hidden="true" size={17} />
                                                 {deletingKey === `archived-${goal.id}` ? '削除中…' : '完全に削除'}

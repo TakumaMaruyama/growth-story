@@ -8,6 +8,7 @@ import { ChartLineUpIcon } from '@phosphor-icons/react/dist/csr/ChartLineUp';
 import { HouseIcon } from '@phosphor-icons/react/dist/csr/House';
 import { NotePencilIcon } from '@phosphor-icons/react/dist/csr/NotePencil';
 import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
+import { TargetIcon } from '@phosphor-icons/react/dist/csr/Target';
 import { clearTabDrafts } from '@/lib/tab-draft-store';
 
 interface NavProps {
@@ -19,6 +20,14 @@ interface NavProps {
 const USER_LINKS = [
     { href: '/', label: 'ホーム', Icon: HouseIcon },
     { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
+    { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
+    { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
+] as const;
+
+const MOBILE_USER_LINKS = [
+    { href: '/', label: 'ホーム', Icon: HouseIcon },
+    { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
+    { href: '/goals', label: '大会目標', Icon: TargetIcon },
     { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
     { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
 ] as const;
@@ -96,7 +105,7 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
 
             {!isAdmin && (
                 <nav className="mobile-bottom-nav" aria-label="モバイルナビゲーション">
-                    {USER_LINKS.map((link) => {
+                    {MOBILE_USER_LINKS.map((link) => {
                         const isCurrent = link.href === '/'
                             ? pathname === '/'
                             : pathname === link.href || pathname.startsWith(`${link.href}/`);
