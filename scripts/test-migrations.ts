@@ -98,6 +98,8 @@ async function main() {
     await applyMigration(migrationPool, '20260802000000_daily_activity_type');
     await applyMigration(migrationPool, '20260802000100_multiple_active_competition_goals');
     await applyMigration(migrationPool, '20260803000000_invite_registration_and_membership_status');
+    await applyMigration(migrationPool, '20260803000100_pause_daily_activity_check');
+    await applyMigration(migrationPool, '20260803000200_restore_daily_activity_check');
 
     const legacyMembership = await migrationPool.query<{
         membership_status: string;

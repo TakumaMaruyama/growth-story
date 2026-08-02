@@ -53,10 +53,9 @@ test('migration backfills legacy records and preserves the compatibility column'
     assert.doesNotMatch(migration, /DROP COLUMN\s+"practiced"/i);
 });
 
-test('production startup safely repairs only legacy activity mismatches', async () => {
-    const [packageJson, startupScript, bridgeMigration] = await Promise.all([
+test('Replit bridge migrations restore the daily activity invariant', async () => {
+    const [packageJson, pauseMigration, restoreMigration] = await Promise.all([
         readFile(path.join(process.cwd(), 'package.json'), 'utf8'),
-        readFile(path.join(process.cwd(), 'scripts/prepare-runtime-database.mjs'), 'utf8'),
         readFile(
             path.join(
                 process.cwd(),
@@ -64,11 +63,19 @@ test('production startup safely repairs only legacy activity mismatches', async 
             ),
             'utf8',
         ),
+        readFile(
+            path.join(
+                process.cwd(),
+                'prisma/migrations/20260803000200_restore_daily_activity_check/migration.sql',
+            ),
+            'utf8',
+        ),
     ]);
 
-    assert.match(packageJson, /node scripts\/prepare-runtime-database\.mjs && next start/);
-    assert.match(startupScript, /"practiced" AND "activity_type" = 'REST'/);
-    assert.match(startupScript, /NOT "practiced" AND "activity_type" <> 'REST'/);
-    assert.doesNotMatch(startupScript, /SET\s+"practiced"/i);
-    assert.match(bridgeMigration, /DROP CONSTRAINT IF EXISTS "daily_logs_activity_practiced_check"/);
+    assert.match(packageJson, /"start": "next start"/);
+    assert.doesNotMatch(packageJson, /prepare-runtime-database/);
+    assert.match(pauseMigration, /DROP CONSTRAINT IF EXISTS "daily_logs_activity_practiced_check"/);
+    assert.match(restoreMigration, /ADD CONSTRAINT "daily_logs_activity_practiced_check"/);
+    assert.match(restoreMigration, /NOT VALID/);
+    assert.match(restoreMigration, /VALIDATE CONSTRAINT "daily_logs_activity_practiced_check"/);
 });
