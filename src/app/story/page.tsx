@@ -17,6 +17,7 @@ export default async function StoryPage() {
         include: { answers: { orderBy: { questionNo: 'asc' } } },
     });
     const answerMap = new Map(latestStory?.answers.map((answer) => [answer.questionNo, answer.answerText]));
+    const isReadOnly = user.membershipStatus === 'WITHDRAWN';
 
     return (
         <>
@@ -29,10 +30,16 @@ export default async function StoryPage() {
                         <p className="muted">これまでの経験と、これから目指す自分を言葉にした記録です。</p>
                     </div>
                     <div className="button-row">
-                        <Link href="/story/edit" className="btn btn-primary">更新する</Link>
+                        {!isReadOnly && <Link href="/story/edit" className="btn btn-primary">更新する</Link>}
                         <Link href="/story/history" className="btn btn-secondary">履歴</Link>
                     </div>
                 </div>
+
+                {isReadOnly && (
+                    <div className="alert alert-warning" role="status">
+                        退会中のため、競泳物語は閲覧のみです。利用再開は管理者へご連絡ください。
+                    </div>
+                )}
 
                 {latestStory ? (
                     <>
@@ -55,7 +62,7 @@ export default async function StoryPage() {
                 ) : (
                     <div className="card empty-state">
                         <p>物語はまだ始まっていません。</p>
-                        <Link href="/story/edit" className="btn btn-primary">最初の物語を書く</Link>
+                        {!isReadOnly && <Link href="/story/edit" className="btn btn-primary">最初の物語を書く</Link>}
                     </div>
                 )}
             </main>

@@ -1,10 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 import Nav from '@/components/Nav';
-import { MIN_USER_PASSWORD_LENGTH } from '@/lib/limits';
 import { loginHref } from '@/lib/return-path';
 
 interface UserInfo {
@@ -17,6 +16,8 @@ interface UserListItem {
     displayName: string;
     role: 'USER' | 'ADMIN';
     isActive: boolean;
+    membershipStatus: 'ACTIVE' | 'WITHDRAWN';
+    withdrawnAt: string | null;
     createdAt: string;
 }
 
@@ -25,6 +26,45 @@ interface UserPage {
     users: UserListItem[];
     nextCursor: string | null;
     error?: string;
+}
+
+interface InviteListItem {
+    id: string;
+    athleteName: string;
+    expiresAt: string;
+    usedAt: string | null;
+    revokedAt: string | null;
+    createdAt: string;
+    usedBy: { displayName: string } | null;
+}
+
+interface InvitePage {
+    invites?: InviteListItem[];
+    error?: string;
+}
+
+function formatDateTime(value: string): string {
+    return new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date(value));
+}
+
+function inviteStatus(invite: InviteListItem, now: number): {
+    label: string;
+    className: string;
+    canRevoke: boolean;
+} {
+    if (invite.usedAt) return { label: '登録済み', className: 'badge-primary', canRevoke: false };
+    if (invite.revokedAt) return { label: '停止済み', className: 'badge-secondary', canRevoke: false };
+    if (new Date(invite.expiresAt).getTime() <= now) {
+        return { label: '期限切れ', className: 'badge-secondary', canRevoke: false };
+    }
+    return { label: '利用可能', className: 'badge-primary', canRevoke: true };
 }
 
 export default function AdminUsersPage() {
@@ -38,13 +78,17 @@ export default function AdminUsersPage() {
     const [retryCursor, setRetryCursor] = useState<string | null>(null);
     const [retryAppend, setRetryAppend] = useState(false);
 
-    const [loginId, setLoginId] = useState('');
-    const [displayName, setDisplayName] = useState('');
-    const [password, setPassword] = useState('');
-    const [passwordConfirmation, setPasswordConfirmation] = useState('');
-    const [creating, setCreating] = useState(false);
-    const [createMessage, setCreateMessage] = useState('');
-    const [createError, setCreateError] = useState('');
+    const [invites, setInvites] = useState<InviteListItem[]>([]);
+    const [inviteStatusTime, setInviteStatusTime] = useState(0);
+    const [invitesLoading, setInvitesLoading] = useState(true);
+    const [inviteListError, setInviteListError] = useState('');
+    const [athleteName, setAthleteName] = useState('');
+    const [creatingInvite, setCreatingInvite] = useState(false);
+    const [inviteError, setInviteError] = useState('');
+    const [newInviteUrl, setNewInviteUrl] = useState('');
+    const [copyMessage, setCopyMessage] = useState('');
+    const [pendingInviteIds, setPendingInviteIds] = useState<Set<string>>(() => new Set());
+
     const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
     const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
 
@@ -88,52 +132,106 @@ export default function AdminUsersPage() {
         }
     }, [redirectForAuthorization]);
 
-    useEffect(() => {
-        const timeout = window.setTimeout(() => void fetchUsers(), 0);
-        return () => window.clearTimeout(timeout);
-    }, [fetchUsers]);
-
-    const handleCreate = async (event: React.FormEvent) => {
-        event.preventDefault();
-        setCreateError('');
-        setCreateMessage('');
-        if (password !== passwordConfirmation) {
-            setCreateError('初期パスワードと確認用パスワードが一致しません');
-            return;
-        }
-        setCreating(true);
-
+    const fetchInvites = useCallback(async () => {
+        setInvitesLoading(true);
+        setInviteListError('');
         try {
-            const response = await fetch('/api/admin/users', {
+            const response = await fetch('/api/admin/registration-invites', { cache: 'no-store' });
+            const data = await response.json().catch(() => null) as InvitePage | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok || !Array.isArray(data?.invites)) {
+                setInviteListError(data?.error ?? '登録URLの一覧を読み込めませんでした');
+                return;
+            }
+            setInvites(data.invites);
+            setInviteStatusTime(Date.now());
+        } catch {
+            setInviteListError('通信を確認して、登録URLを再読み込みしてください');
+        } finally {
+            setInvitesLoading(false);
+        }
+    }, [redirectForAuthorization]);
+
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            void fetchUsers();
+            void fetchInvites();
+        }, 0);
+        return () => window.clearTimeout(timeout);
+    }, [fetchInvites, fetchUsers]);
+
+    const handleCreateInvite = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setInviteError('');
+        setNewInviteUrl('');
+        setCopyMessage('');
+        setCreatingInvite(true);
+        try {
+            const response = await fetch('/api/admin/registration-invites', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ loginId, displayName, password }),
+                body: JSON.stringify({ athleteName }),
+            });
+            const data = await response.json().catch(() => null) as {
+                token?: string;
+                error?: string;
+            } | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok || typeof data?.token !== 'string') {
+                setInviteError(data?.error ?? '登録URLを発行できませんでした');
+                return;
+            }
+            setNewInviteUrl(`${window.location.origin}/register?invite=${encodeURIComponent(data.token)}`);
+            setAthleteName('');
+            await fetchInvites();
+        } catch {
+            setInviteError('通信を確認して、もう一度お試しください');
+        } finally {
+            setCreatingInvite(false);
+        }
+    };
+
+    const copyInviteUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(newInviteUrl);
+            setCopyMessage('登録URLをコピーしました');
+        } catch {
+            setCopyMessage('URL欄を選択してコピーしてください');
+        }
+    };
+
+    const revokeInvite = async (invite: InviteListItem) => {
+        if (!window.confirm(`${invite.athleteName}さんの登録URLを停止しますか？`)) return;
+        setPendingInviteIds((current) => new Set(current).add(invite.id));
+        setInviteListError('');
+        try {
+            const response = await fetch(`/api/admin/registration-invites/${invite.id}`, {
+                method: 'DELETE',
             });
             const data = await response.json().catch(() => null) as { error?: string } | null;
             if (redirectForAuthorization(response.status)) return;
             if (!response.ok) {
-                setCreateError(data?.error ?? 'ユーザーを作成できませんでした');
+                setInviteListError(data?.error ?? '登録URLを停止できませんでした');
                 return;
             }
-            setCreateMessage('ユーザーを作成しました');
-            setLoginId('');
-            setDisplayName('');
-            setPassword('');
-            setPasswordConfirmation('');
-            await fetchUsers();
+            await fetchInvites();
         } catch {
-            setCreateError('通信を確認して、もう一度お試しください');
+            setInviteListError('通信を確認して、もう一度お試しください');
         } finally {
-            setCreating(false);
+            setPendingInviteIds((current) => {
+                const next = new Set(current);
+                next.delete(invite.id);
+                return next;
+            });
         }
     };
 
-    const toggleActive = async (target: UserListItem) => {
-        const nextState = !target.isActive;
-        if (!nextState && !window.confirm(
-            `${target.displayName}さんを無効化しますか？\nこのユーザーのログイン中セッションはすべて終了します。`,
-        )) return;
-
+    const runUserAction = async (
+        target: UserListItem,
+        url: string,
+        body: Record<string, unknown>,
+        apply: (current: UserListItem) => UserListItem,
+    ) => {
         setPendingUserIds((current) => new Set(current).add(target.id));
         setToggleErrors((current) => {
             const next = { ...current };
@@ -141,10 +239,10 @@ export default function AdminUsersPage() {
             return next;
         });
         try {
-            const response = await fetch(`/api/admin/users/${target.id}/toggle`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isActive: nextState }),
+                body: JSON.stringify(body),
             });
             const data = await response.json().catch(() => null) as { error?: string } | null;
             if (redirectForAuthorization(response.status)) return;
@@ -155,9 +253,7 @@ export default function AdminUsersPage() {
                 }));
                 return;
             }
-            setUsers((current) => current.map((user) => (
-                user.id === target.id ? { ...user, isActive: nextState } : user
-            )));
+            setUsers((current) => current.map((user) => user.id === target.id ? apply(user) : user));
         } catch {
             setToggleErrors((current) => ({
                 ...current,
@@ -172,6 +268,43 @@ export default function AdminUsersPage() {
         }
     };
 
+    const toggleMembership = async (target: UserListItem) => {
+        const nextStatus = target.membershipStatus === 'ACTIVE' ? 'WITHDRAWN' : 'ACTIVE';
+        const confirmed = nextStatus === 'WITHDRAWN'
+            ? window.confirm(
+                `${target.displayName}さんを退会にしますか？\n過去の記録は閲覧できますが、新規入力と更新ができなくなります。`,
+            )
+            : window.confirm(
+                `${target.displayName}さんの利用を再開しますか？\n保護者の利用再開の意思を確認してから実行してください。`,
+            );
+        if (!confirmed) return;
+
+        await runUserAction(
+            target,
+            `/api/admin/users/${target.id}/membership`,
+            { membershipStatus: nextStatus },
+            (user) => ({
+                ...user,
+                membershipStatus: nextStatus,
+                withdrawnAt: nextStatus === 'WITHDRAWN' ? new Date().toISOString() : null,
+            }),
+        );
+    };
+
+    const toggleActive = async (target: UserListItem) => {
+        const nextState = !target.isActive;
+        if (!nextState && !window.confirm(
+            `${target.displayName}さんのログインを停止しますか？\nログイン中のセッションはすべて終了します。`,
+        )) return;
+
+        await runUserAction(
+            target,
+            `/api/admin/users/${target.id}/toggle`,
+            { isActive: nextState },
+            (user) => ({ ...user, isActive: nextState }),
+        );
+    };
+
     return (
         <>
             <Nav userName={adminUser?.displayName} isAdmin />
@@ -179,89 +312,110 @@ export default function AdminUsersPage() {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Administration</p>
-                        <h1 className="page-title">ユーザー管理</h1>
-                        <p className="muted">アカウントの作成と利用状態を管理します。</p>
+                        <h1 className="page-title">会員管理</h1>
+                        <p className="muted">保護者へ送る登録URLと、会員の利用状態を管理します。</p>
                     </div>
                 </div>
 
-                <section className="card" aria-labelledby="create-user-heading">
-                    <h2 id="create-user-heading" className="section-title">新規ユーザー作成</h2>
-                    <form onSubmit={handleCreate}>
-                        <div className="summary-grid">
-                            <div className="form-group">
-                                <label htmlFor="loginId" className="form-label">ログインID</label>
-                                <input
-                                    type="text"
-                                    id="loginId"
-                                    className="form-input"
-                                    value={loginId}
-                                    onChange={(event) => setLoginId(event.target.value)}
-                                    required
-                                    minLength={3}
-                                    maxLength={64}
-                                    autoComplete="off"
-                                    disabled={creating}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="displayName" className="form-label">表示名</label>
-                                <input
-                                    type="text"
-                                    id="displayName"
-                                    className="form-input"
-                                    value={displayName}
-                                    onChange={(event) => setDisplayName(event.target.value)}
-                                    required
-                                    maxLength={80}
-                                    autoComplete="off"
-                                    disabled={creating}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="password" className="form-label">初期パスワード</label>
-                                <input
-                                    type="password"
-                                    id="password"
-                                    className="form-input"
-                                    value={password}
-                                    onChange={(event) => setPassword(event.target.value)}
-                                    required
-                                    minLength={MIN_USER_PASSWORD_LENGTH}
-                                    autoComplete="new-password"
-                                    disabled={creating}
-                                />
-                                <p className="form-help">
-                                    {MIN_USER_PASSWORD_LENGTH}文字以上。英数字のみでも設定できます。
-                                </p>
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="passwordConfirmation" className="form-label">初期パスワード（確認）</label>
-                                <input
-                                    type="password"
-                                    id="passwordConfirmation"
-                                    className="form-input"
-                                    value={passwordConfirmation}
-                                    onChange={(event) => setPasswordConfirmation(event.target.value)}
-                                    required
-                                    minLength={MIN_USER_PASSWORD_LENGTH}
-                                    autoComplete="new-password"
-                                    disabled={creating}
-                                    aria-invalid={Boolean(createError && password !== passwordConfirmation)}
-                                />
-                            </div>
+                <section className="card" aria-labelledby="create-invite-heading">
+                    <h2 id="create-invite-heading" className="section-title">会員登録URLを発行</h2>
+                    <p className="muted">URLは1選手につき1回だけ利用でき、発行から7日で期限切れになります。</p>
+                    <form onSubmit={handleCreateInvite}>
+                        <div className="form-group">
+                            <label htmlFor="athleteName" className="form-label">選手名</label>
+                            <input
+                                type="text"
+                                id="athleteName"
+                                className="form-input"
+                                value={athleteName}
+                                onChange={(event) => setAthleteName(event.target.value)}
+                                required
+                                maxLength={80}
+                                disabled={creatingInvite}
+                            />
                         </div>
-                        <div aria-live="polite">
-                            {createMessage && <p className="success-message">{createMessage}</p>}
-                            {createError && <p className="error-message" role="alert">{createError}</p>}
-                        </div>
-                        <button type="submit" className="btn btn-primary" disabled={creating}>
-                            {creating ? '作成中…' : 'ユーザーを作成'}
+                        {inviteError && <p className="error-message" role="alert">{inviteError}</p>}
+                        <button type="submit" className="btn btn-primary" disabled={creatingInvite}>
+                            {creatingInvite ? '発行中…' : '登録URLを発行'}
                         </button>
                     </form>
+
+                    {newInviteUrl && (
+                        <div className="alert alert-info" style={{ marginTop: '1rem' }}>
+                            <p><strong>このURLを保護者へ送ってください。</strong></p>
+                            <p className="muted">安全のため、同じURLはこの画面を離れると再表示できません。</p>
+                            <label htmlFor="newInviteUrl" className="form-label">登録URL</label>
+                            <input
+                                id="newInviteUrl"
+                                className="form-input"
+                                value={newInviteUrl}
+                                readOnly
+                                onFocus={(event) => event.currentTarget.select()}
+                            />
+                            <div className="button-row" style={{ marginTop: '0.75rem' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => void copyInviteUrl()}>
+                                    URLをコピー
+                                </button>
+                                {copyMessage && <span role="status">{copyMessage}</span>}
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                <section className="card" aria-labelledby="invites-heading">
+                    <h2 id="invites-heading" className="section-title">発行済み登録URL</h2>
+                    {inviteListError && <p className="error-message" role="alert">{inviteListError}</p>}
+                    {invitesLoading ? (
+                        <div className="loading-state" role="status">読み込み中…</div>
+                    ) : invites.length > 0 ? (
+                        <div className="table-wrap">
+                            <table className="table">
+                                <caption className="visually-hidden">発行済み登録URL</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">選手名</th>
+                                        <th scope="col">状態</th>
+                                        <th scope="col">期限・登録者</th>
+                                        <th scope="col">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invites.map((invite) => {
+                                        const status = inviteStatus(invite, inviteStatusTime);
+                                        return (
+                                            <tr key={invite.id}>
+                                                <td>{invite.athleteName}</td>
+                                                <td><span className={`badge ${status.className}`}>{status.label}</span></td>
+                                                <td>
+                                                    {invite.usedBy
+                                                        ? `${invite.usedBy.displayName}さんが登録`
+                                                        : `${formatDateTime(invite.expiresAt)}まで`}
+                                                </td>
+                                                <td>
+                                                    {status.canRevoke ? (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-danger btn-small"
+                                                            onClick={() => void revokeInvite(invite)}
+                                                            disabled={pendingInviteIds.has(invite.id)}
+                                                        >
+                                                            {pendingInviteIds.has(invite.id) ? '停止中…' : 'URLを停止'}
+                                                        </button>
+                                                    ) : <span className="muted">操作なし</span>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p className="empty-state">発行済みの登録URLはありません。</p>
+                    )}
                 </section>
 
                 <section className="card" aria-labelledby="users-heading">
-                    <h2 id="users-heading" className="section-title">ユーザー一覧</h2>
+                    <h2 id="users-heading" className="section-title">会員一覧</h2>
                     {loadError && (
                         <div className="alert alert-danger" role="alert">
                             <p>{loadError}</p>
@@ -281,12 +435,13 @@ export default function AdminUsersPage() {
                         <>
                             <div className="table-wrap">
                                 <table className="table">
-                                    <caption className="visually-hidden">登録ユーザー</caption>
+                                    <caption className="visually-hidden">登録会員</caption>
                                     <thead>
                                         <tr>
                                             <th scope="col">ログインID</th>
                                             <th scope="col">表示名</th>
-                                            <th scope="col">状態</th>
+                                            <th scope="col">会員状態</th>
+                                            <th scope="col">ログイン</th>
                                             <th scope="col">操作</th>
                                         </tr>
                                     </thead>
@@ -296,8 +451,13 @@ export default function AdminUsersPage() {
                                                 <td>{target.loginId}</td>
                                                 <td>{target.displayName}</td>
                                                 <td>
+                                                    <span className={`badge ${target.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
+                                                        {target.membershipStatus === 'ACTIVE' ? '利用中' : '退会'}
+                                                    </span>
+                                                </td>
+                                                <td>
                                                     <span className={`badge ${target.isActive ? 'badge-primary' : 'badge-secondary'}`}>
-                                                        {target.isActive ? '有効' : '無効'}
+                                                        {target.isActive ? '可能' : '停止'}
                                                     </span>
                                                 </td>
                                                 <td>
@@ -310,26 +470,30 @@ export default function AdminUsersPage() {
                                                             詳細
                                                         </Link>
                                                         {target.role !== 'ADMIN' && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => void toggleActive(target)}
-                                                                className={`btn ${target.isActive ? 'btn-danger' : 'btn-primary'} btn-small`}
-                                                                disabled={pendingUserIds.has(target.id)}
-                                                                aria-label={`${target.displayName}さんを${target.isActive ? '無効化' : '有効化'}`}
-                                                                aria-describedby={toggleErrors[target.id] ? `toggle-error-${target.id}` : undefined}
-                                                            >
-                                                                {pendingUserIds.has(target.id) ? '処理中…' : target.isActive ? '無効化' : '有効化'}
-                                                            </button>
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void toggleMembership(target)}
+                                                                    className={`btn ${target.membershipStatus === 'ACTIVE' ? 'btn-danger' : 'btn-primary'} btn-small`}
+                                                                    disabled={pendingUserIds.has(target.id)}
+                                                                >
+                                                                    {pendingUserIds.has(target.id)
+                                                                        ? '処理中…'
+                                                                        : target.membershipStatus === 'ACTIVE' ? '退会' : '利用再開'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void toggleActive(target)}
+                                                                    className="btn btn-secondary btn-small"
+                                                                    disabled={pendingUserIds.has(target.id)}
+                                                                >
+                                                                    {target.isActive ? 'ログイン停止' : '停止解除'}
+                                                                </button>
+                                                            </>
                                                         )}
                                                     </div>
                                                     {toggleErrors[target.id] && (
-                                                        <p
-                                                            id={`toggle-error-${target.id}`}
-                                                            className="error-message"
-                                                            role="alert"
-                                                        >
-                                                            {toggleErrors[target.id]}
-                                                        </p>
+                                                        <p className="error-message" role="alert">{toggleErrors[target.id]}</p>
                                                     )}
                                                 </td>
                                             </tr>
@@ -350,7 +514,7 @@ export default function AdminUsersPage() {
                             )}
                         </>
                     ) : !loadError ? (
-                        <p className="empty-state">ユーザーがいません。</p>
+                        <p className="empty-state">会員がいません。</p>
                     ) : null}
                 </section>
             </main>

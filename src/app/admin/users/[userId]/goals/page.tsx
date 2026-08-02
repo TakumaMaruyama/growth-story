@@ -2,8 +2,13 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
 import { requireAdmin } from '@/lib/auth';
-import { getCompetitionGoalDisplayValues } from '@/lib/competition-goal-display';
-import { formatJSTDateTime, formatJSTDisplay } from '@/lib/date';
+import {
+    findNextMeetGoalId,
+    getCompetitionGoalDisplayValues,
+    isCompetitionGoalElapsed,
+    sortCompetitionGoalsForDisplay,
+} from '@/lib/competition-goal-display';
+import { formatJSTDateTime, formatJSTDisplay, todayJST } from '@/lib/date';
 import { prisma } from '@/lib/prisma';
 
 interface Props {
@@ -11,9 +16,9 @@ interface Props {
 }
 
 const GOAL_LABELS = {
-    NEXT_MEET: '次の大会',
-    ANNUAL: '年間目標',
-    MILESTONE: '期限つき目標',
+    NEXT_MEET: '大会',
+    ANNUAL: '年間',
+    MILESTONE: '出場目標',
 } as const;
 
 export default async function AdminUserGoalsPage({ params }: Props) {
@@ -53,8 +58,17 @@ export default async function AdminUserGoalsPage({ params }: Props) {
         },
     });
 
-    const activeGoals = goals.filter((goal) => goal.isActive);
-    const archivedGoals = goals.filter((goal) => !goal.isActive);
+    const today = todayJST();
+    const activeGoals = sortCompetitionGoalsForDisplay(
+        goals.filter((goal) => goal.isActive),
+        today,
+    );
+    const archivedGoals = goals
+        .filter((goal) => !goal.isActive)
+        .sort((left, right) => (
+            (right.archivedAt?.getTime() ?? 0) - (left.archivedAt?.getTime() ?? 0)
+        ));
+    const nextMeetGoalId = findNextMeetGoalId(activeGoals, today);
 
     const renderGoal = (goal: (typeof goals)[number]) => {
         const displayGoal = getCompetitionGoalDisplayValues(goal);
@@ -63,13 +77,23 @@ export default async function AdminUserGoalsPage({ params }: Props) {
                 ? `${goal.targetDate.getUTCFullYear()}年`
                 : `${formatJSTDisplay(goal.targetDate)}${goal.type === 'MILESTONE' ? 'まで' : ''}`
             : '未設定';
+        const isElapsed = isCompetitionGoalElapsed(goal, today);
         return (
             <article key={goal.id} className="summary-item stack">
-                <div className="button-row" style={{ justifyContent: 'space-between' }}>
+                <div className="goal-list-badges">
                     <p className="eyebrow">{GOAL_LABELS[goal.type]}</p>
                     <span className={`badge ${goal.isActive ? 'badge-primary' : 'badge-secondary'}`}>
                         {goal.isActive ? '設定中' : '過去の目標'}
                     </span>
+                    {goal.isActive && goal.id === nextMeetGoalId && (
+                        <span className="badge badge-primary">次の大会</span>
+                    )}
+                    {goal.isActive && !goal.targetDate && (
+                        <span className="badge badge-secondary">日付未定</span>
+                    )}
+                    {goal.isActive && isElapsed && (
+                        <span className="badge badge-secondary">経過済み</span>
+                    )}
                 </div>
                 <dl className="goal-display-list">
                     <div>
@@ -108,6 +132,7 @@ export default async function AdminUserGoalsPage({ params }: Props) {
 
                 <section className="card" aria-labelledby="active-goals-heading">
                     <h2 id="active-goals-heading" className="section-title">設定中の目標</h2>
+                    <p className="muted">設定中 {activeGoals.length}件・これからの日付が近い順に表示しています。</p>
                     {activeGoals.length > 0 ? (
                         <div className="summary-grid">{activeGoals.map(renderGoal)}</div>
                     ) : (

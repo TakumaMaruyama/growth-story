@@ -73,6 +73,12 @@ async function main() {
         [randomUUID(), userId],
     );
     await migrationPool.query(
+        `INSERT INTO "daily_logs"
+            ("id", "user_id", "log_date", "score", "practiced", "updated_at")
+         VALUES ($1, $2, DATE '2026-08-01', 8, true, CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId],
+    );
+    await migrationPool.query(
         `INSERT INTO "growth_profiles"
             ("id", "user_id", "sex", "birth_date", "father_height_cm", "mother_height_cm", "updated_at")
          VALUES ($1, $2, 'MALE', DATE '2012-04-05', 178.5, 164.25, CURRENT_TIMESTAMP)`,
@@ -89,6 +95,123 @@ async function main() {
     await applyMigration(migrationPool, '20260801000100_remove_growth_features');
     await applyMigration(migrationPool, '20260801000200_harden_security');
     await applyMigration(migrationPool, '20260801000300_competition_goals');
+    await applyMigration(migrationPool, '20260802000000_daily_activity_type');
+    await applyMigration(migrationPool, '20260802000100_multiple_active_competition_goals');
+    await applyMigration(migrationPool, '20260803000000_invite_registration_and_membership_status');
+
+    const legacyMembership = await migrationPool.query<{
+        membership_status: string;
+        withdrawn_at: Date | null;
+    }>(
+        `SELECT "membership_status"::text, "withdrawn_at"
+           FROM "users"
+          WHERE "id" = $1`,
+        [userId],
+    );
+    assert.deepEqual(legacyMembership.rows, [{
+        membership_status: 'ACTIVE',
+        withdrawn_at: null,
+    }]);
+
+    const adminId = randomUUID();
+    const registeredUserId = randomUUID();
+    await migrationPool.query(
+        `INSERT INTO "users"
+            ("id", "login_id", "display_name", "role", "password_hash", "updated_at")
+         VALUES ($1, $2, 'Migration admin', 'ADMIN', 'not-used', CURRENT_TIMESTAMP),
+                ($3, $4, 'Invited athlete', 'USER', 'not-used', CURRENT_TIMESTAMP)`,
+        [
+            adminId,
+            `migration_admin_${randomUUID()}`,
+            registeredUserId,
+            `migration_invited_${randomUUID()}`,
+        ],
+    );
+
+    const inviteId = randomUUID();
+    const inviteTokenHash = 'a'.repeat(64);
+    await migrationPool.query(
+        `INSERT INTO "registration_invites"
+            ("id", "token_hash", "athlete_name", "created_by_id", "used_by_user_id", "expires_at", "used_at")
+         VALUES ($1, $2, 'Invited athlete', $3, $4, CURRENT_TIMESTAMP + INTERVAL '1 day', CURRENT_TIMESTAMP)`,
+        [inviteId, inviteTokenHash, adminId, registeredUserId],
+    );
+    await migrationPool.query(
+        `INSERT INTO "guardian_consents"
+            ("id", "user_id", "guardian_name", "guardian_relationship", "notice_version")
+         VALUES ($1, $2, 'Migration guardian', '保護者', '2026-08-03-v1')`,
+        [randomUUID(), registeredUserId],
+    );
+
+    const migratedRegistration = await migrationPool.query<{
+        athlete_name: string;
+        used_by_user_id: string;
+        consent_user_id: string;
+        notice_version: string;
+    }>(
+        `SELECT i."athlete_name",
+                i."used_by_user_id",
+                c."user_id" AS "consent_user_id",
+                c."notice_version"
+           FROM "registration_invites" i
+           JOIN "guardian_consents" c ON c."user_id" = i."used_by_user_id"
+          WHERE i."id" = $1`,
+        [inviteId],
+    );
+    assert.deepEqual(migratedRegistration.rows, [{
+        athlete_name: 'Invited athlete',
+        used_by_user_id: registeredUserId,
+        consent_user_id: registeredUserId,
+        notice_version: '2026-08-03-v1',
+    }]);
+
+    await migrationPool.query(
+        `UPDATE "users"
+            SET "membership_status" = 'WITHDRAWN', "withdrawn_at" = CURRENT_TIMESTAMP
+          WHERE "id" = $1`,
+        [registeredUserId],
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "withdrawn_at" = NULL WHERE "id" = $1`,
+            [registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await migrationPool.query(
+        `UPDATE "users"
+            SET "membership_status" = 'ACTIVE', "withdrawn_at" = NULL
+          WHERE "id" = $1`,
+        [registeredUserId],
+    );
+
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "registration_invites"
+                ("id", "token_hash", "athlete_name", "created_by_id", "expires_at")
+             VALUES ($1, 'not-a-sha256-hash', 'Invalid token', $2, CURRENT_TIMESTAMP + INTERVAL '1 day')`,
+            [randomUUID(), adminId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "registration_invites"
+                ("id", "token_hash", "athlete_name", "created_by_id", "expires_at", "used_at")
+             VALUES ($1, $2, 'Invalid state', $3, CURRENT_TIMESTAMP + INTERVAL '1 day', CURRENT_TIMESTAMP)`,
+            [randomUUID(), 'b'.repeat(64), adminId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "guardian_consents"
+                ("id", "user_id", "guardian_name", "guardian_relationship", "notice_version")
+             VALUES ($1, $2, '', '保護者', '2026-08-03-v1')`,
+            [randomUUID(), userId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
 
     await migrationPool.query(
         `INSERT INTO "competition_goals"
@@ -96,14 +219,30 @@ async function main() {
          VALUES ($1, $2, 'NEXT_MEET', 'First next meet', NULL, CURRENT_TIMESTAMP)`,
         [randomUUID(), userId],
     );
-    await assert.rejects(
-        migrationPool.query(
-            `INSERT INTO "competition_goals"
-                ("id", "user_id", "goal_type", "title", "updated_at")
-             VALUES ($1, $2, 'NEXT_MEET', 'Duplicate next meet', CURRENT_TIMESTAMP)`,
-            [randomUUID(), userId],
-        ),
-        (error: unknown) => postgresErrorCode(error) === '23505',
+    await migrationPool.query(
+        `INSERT INTO "competition_goals"
+            ("id", "user_id", "goal_type", "title", "updated_at")
+         VALUES ($1, $2, 'NEXT_MEET', 'Second next meet', CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId],
+    );
+    await migrationPool.query(
+        `INSERT INTO "competition_goals"
+            ("id", "user_id", "goal_type", "title", "target_date", "updated_at")
+         VALUES ($1, $2, 'MILESTONE', 'First milestone', DATE '2027-03-31', CURRENT_TIMESTAMP),
+                ($3, $2, 'MILESTONE', 'Second milestone', DATE '2027-08-31', CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId, randomUUID()],
+    );
+    await migrationPool.query(
+        `INSERT INTO "competition_goals"
+            ("id", "user_id", "goal_type", "title", "target_date", "updated_at")
+         VALUES ($1, $2, 'ANNUAL', 'Annual target', DATE '2026-12-31', CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId],
+    );
+    await migrationPool.query(
+        `INSERT INTO "competition_goals"
+            ("id", "user_id", "goal_type", "title", "target_date", "updated_at")
+         VALUES ($1, $2, 'ANNUAL', 'Second annual target', DATE '2027-12-31', CURRENT_TIMESTAMP)`,
+        [randomUUID(), userId],
     );
     await assert.rejects(
         migrationPool.query(
@@ -164,7 +303,7 @@ async function main() {
     }>(
         `SELECT
             (SELECT count(*)::integer FROM "sessions") AS "sessions",
-            (SELECT "revision" FROM "daily_logs" WHERE "user_id" = $1) AS "revision",
+            (SELECT min("revision") FROM "daily_logs" WHERE "user_id" = $1) AS "revision",
             (SELECT count(*)::integer FROM "competition_goals" WHERE "user_id" = $1) AS "competitionGoals",
             (SELECT count(*)::integer
                FROM information_schema.tables
@@ -175,9 +314,43 @@ async function main() {
     assert.deepEqual(invariants.rows, [{
         sessions: 0,
         revision: 1,
-        competitionGoals: 1,
+        competitionGoals: 6,
         active_growth_tables: 0,
     }]);
+
+    const migratedActivities = await migrationPool.query<{
+        log_date: string;
+        activity_type: string;
+        practiced: boolean;
+    }>(
+        `SELECT "log_date"::text, "activity_type"::text, "practiced"
+           FROM "daily_logs"
+          WHERE "user_id" = $1
+          ORDER BY "log_date"`,
+        [userId],
+    );
+    assert.deepEqual(migratedActivities.rows, [
+        { log_date: '2026-07-31', activity_type: 'REST', practiced: false },
+        { log_date: '2026-08-01', activity_type: 'PRACTICE', practiced: true },
+    ]);
+
+    const legacyInsert = await migrationPool.query<{ activity_type: string }>(
+        `INSERT INTO "daily_logs"
+            ("id", "user_id", "log_date", "score", "practiced", "updated_at")
+         VALUES ($1, $2, DATE '2026-08-02', 9, true, CURRENT_TIMESTAMP)
+         RETURNING "activity_type"::text`,
+        [randomUUID(), userId],
+    );
+    assert.equal(legacyInsert.rows[0]?.activity_type, 'PRACTICE');
+
+    const competitionInsert = await migrationPool.query<{ activity_type: string }>(
+        `INSERT INTO "daily_logs"
+            ("id", "user_id", "log_date", "score", "activity_type", "practiced", "updated_at")
+         VALUES ($1, $2, DATE '2026-08-03', 10, 'COMPETITION', true, CURRENT_TIMESTAMP)
+         RETURNING "activity_type"::text`,
+        [randomUUID(), userId],
+    );
+    assert.equal(competitionInsert.rows[0]?.activity_type, 'COMPETITION');
 
     await assert.rejects(
         migrationPool.query('DELETE FROM "users" WHERE "id" = $1', [userId]),

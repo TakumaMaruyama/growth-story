@@ -22,15 +22,21 @@ import { MAX_DAILY_TEXT_LENGTH } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
 import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
 import { loginHref } from '@/lib/return-path';
+import {
+    dailyActivityFromPracticed,
+    isDailyActivityType,
+    type DailyActivityType,
+} from '@/lib/daily-activity';
 
 interface UserInfo {
     id: string;
     displayName: string;
+    membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
 interface LogData {
     score: number | null;
-    practiced: boolean | null;
+    activityType: DailyActivityType | null;
     goodText: string;
     improveText: string;
     tomorrowText: string;
@@ -43,13 +49,19 @@ interface DailyDraft {
 
 const EMPTY_LOG: LogData = {
     score: null,
-    practiced: null,
+    activityType: null,
     goodText: '',
     improveText: '',
     tomorrowText: '',
 };
 
 const TODAY_REQUEST_KEY = '__today__';
+
+const ACTIVITY_OPTIONS = [
+    { value: 'PRACTICE', label: '練習した', Icon: PersonSimpleSwimIcon },
+    { value: 'COMPETITION', label: '大会', Icon: MedalIcon },
+    { value: 'REST', label: 'お休み', Icon: BedIcon },
+] as const;
 
 const PROMPT_DEFINITIONS = [
     {
@@ -79,7 +91,7 @@ type PromptKey = typeof PROMPT_DEFINITIONS[number]['key'];
 
 function logsAreEqual(left: LogData, right: LogData): boolean {
     return left.score === right.score
-        && left.practiced === right.practiced
+        && left.activityType === right.activityType
         && left.goodText === right.goodText
         && left.improveText === right.improveText
         && left.tomorrowText === right.tomorrowText;
@@ -94,25 +106,46 @@ function isNullableScore(value: unknown): value is number | null {
         || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 10);
 }
 
-function isNullablePracticed(value: unknown): value is boolean | null {
-    return value === null || typeof value === 'boolean';
+function isNullableActivityType(value: unknown): value is DailyActivityType | null {
+    return value === null || isDailyActivityType(value);
 }
 
-function isLogData(value: unknown): value is LogData {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+function parseLogData(value: unknown): LogData | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
-    return Object.keys(record).every((key) => [
+    if (!Object.keys(record).every((key) => [
         'score',
+        'activityType',
         'practiced',
         'goodText',
         'improveText',
         'tomorrowText',
-    ].includes(key))
-        && isNullableScore(record.score)
-        && isNullablePracticed(record.practiced)
-        && typeof record.goodText === 'string'
-        && typeof record.improveText === 'string'
-        && typeof record.tomorrowText === 'string';
+    ].includes(key))) return null;
+    if (
+        !isNullableScore(record.score)
+        || typeof record.goodText !== 'string'
+        || typeof record.improveText !== 'string'
+        || typeof record.tomorrowText !== 'string'
+    ) return null;
+
+    let activityType: DailyActivityType | null;
+    if (Object.prototype.hasOwnProperty.call(record, 'activityType')) {
+        if (!isNullableActivityType(record.activityType)) return null;
+        activityType = record.activityType;
+    } else {
+        if (record.practiced !== null && typeof record.practiced !== 'boolean') return null;
+        activityType = record.practiced === null
+            ? null
+            : dailyActivityFromPracticed(record.practiced);
+    }
+
+    return {
+        score: record.score,
+        activityType,
+        goodText: record.goodText,
+        improveText: record.improveText,
+        tomorrowText: record.tomorrowText,
+    };
 }
 
 function isDailyRevision(value: unknown): value is number | null {
@@ -131,15 +164,16 @@ function readDailyDraft(key: string): { draft: DailyDraft | null; available: boo
         const value: unknown = JSON.parse(saved.value);
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid draft');
         const record = value as Record<string, unknown>;
+        const log = parseLogData(record.log);
         if (
             Object.keys(record).some((field) => field !== 'baseRevision' && field !== 'log')
             || !isDailyRevision(record.baseRevision)
-            || !isLogData(record.log)
+            || !log
         ) {
             throw new Error('invalid draft');
         }
         return {
-            draft: { baseRevision: record.baseRevision, log: record.log },
+            draft: { baseRevision: record.baseRevision, log },
             available: saved.durable,
         };
     } catch {
@@ -265,7 +299,7 @@ function DailyLogPageContent() {
                     today?: string;
                     previousFocus?: string | null;
                     eligibleRecordCount?: number;
-                    log?: (Partial<LogData> & { revision?: number }) | null;
+                    log?: (Partial<LogData> & { revision?: number; practiced?: boolean }) | null;
                 } | null;
 
                 if (response.status === 401) {
@@ -279,6 +313,7 @@ function DailyLogPageContent() {
                 if (
                     !response.ok
                     || !data?.user
+                    || (data.user.membershipStatus !== 'ACTIVE' && data.user.membershipStatus !== 'WITHDRAWN')
                     || !data.date
                     || !data.today
                     || !isEligibleRecordCount(data.eligibleRecordCount)
@@ -290,7 +325,11 @@ function DailyLogPageContent() {
 
                 const nextLog: LogData = data.log ? {
                     score: data.log.score ?? null,
-                    practiced: data.log.practiced ?? null,
+                    activityType: isDailyActivityType(data.log.activityType)
+                        ? data.log.activityType
+                        : typeof data.log.practiced === 'boolean'
+                            ? dailyActivityFromPracticed(data.log.practiced)
+                            : null,
                     goodText: data.log.goodText ?? '',
                     improveText: data.log.improveText ?? '',
                     tomorrowText: data.log.tomorrowText ?? '',
@@ -305,10 +344,12 @@ function DailyLogPageContent() {
                 }
                 const savedDraft = readDailyDraft(dailyDraftKey(data.user.id, data.date));
                 const draft = savedDraft.draft;
-                const initialLog = draft?.log ?? nextLog;
+                const readOnly = data.user.membershipStatus === 'WITHDRAWN';
+                const initialLog = readOnly ? nextLog : draft?.log ?? nextLog;
                 const hasDraftChanges = !logsAreEqual(initialLog, nextLog);
                 const hasStaleDraft = Boolean(
-                    draft
+                    !readOnly
+                    && draft
                     && hasDraftChanges
                     && draft.baseRevision !== revision,
                 );
@@ -349,7 +390,7 @@ function DailyLogPageContent() {
     }, [reloadToken, requestKey, requestedDate, router]);
 
     useEffect(() => {
-        if (!user || !loadedDate || loading) return;
+        if (!user || user.membershipStatus === 'WITHDRAWN' || !loadedDate || loading) return;
         const key = dailyDraftKey(user.id, loadedDate);
         const available = dirty
             ? writeDailyDraft(key, { baseRevision: baseRevisionRef.current, log })
@@ -370,6 +411,7 @@ function DailyLogPageContent() {
     const activePromptDefinition = PROMPT_DEFINITIONS.find(
         (prompt) => prompt.key === activePrompt,
     ) ?? PROMPT_DEFINITIONS[0];
+    const isReadOnly = user?.membershipStatus === 'WITHDRAWN';
 
     const updateLog = <Key extends keyof LogData>(key: Key, value: LogData[Key]) => {
         const next = { ...log, [key]: value };
@@ -447,7 +489,12 @@ function DailyLogPageContent() {
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
 
-        if (log.score === null || log.practiced === null) {
+        if (isReadOnly) {
+            setError('退会中のため、新規入力や更新はできません。');
+            return;
+        }
+
+        if (log.score === null || log.activityType === null) {
             setError('コンディションと練習の記録を選んでください');
             return;
         }
@@ -476,11 +523,17 @@ function DailyLogPageContent() {
                 body: JSON.stringify({ date: saveDate, baseRevision, ...savedLog }),
             });
             const data = await response.json().catch(() => null) as {
+                code?: string;
                 error?: string;
                 revision?: number;
                 created?: boolean;
                 eligibleRecordCount?: number;
             } | null;
+            if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
+                setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
+                setError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
+                return;
+            }
             if (!response.ok) {
                 if (response.status === 409) {
                     setConflictMessage(data?.error ?? '別の画面で日誌が更新されました。最新の内容を読み込んでください。');
@@ -529,9 +582,10 @@ function DailyLogPageContent() {
         && !loading
         && !loadError
         && !conflictMessage
+        && !isReadOnly
         && !hasOversizedText
         && log.score !== null
-        && log.practiced !== null
+        && log.activityType !== null
         && dirty,
     );
     const badgePercent = Math.round(badgeProgress.progress * 100);
@@ -574,6 +628,11 @@ function DailyLogPageContent() {
                     </div>
                 ) : (
                     <>
+                        {isReadOnly && (
+                            <div className="alert alert-warning" role="status">
+                                退会中のため、日誌は閲覧のみです。利用再開は管理者へご連絡ください。
+                            </div>
+                        )}
                         <section className={`milestone-card${earnedMilestone ? ' milestone-card-earned' : ''}`} aria-labelledby="milestone-heading">
                             <div className="milestone-content">
                                 <div>
@@ -616,7 +675,7 @@ function DailyLogPageContent() {
                             <section className="quick-step" aria-labelledby="condition-heading">
                                 <div className="quick-step-heading">
                                     <h2 id="condition-heading">1. 今日のコンディション</h2>
-                                    <span className="required-chip">必須</span>
+                                    {!isReadOnly && <span className="required-chip">必須</span>}
                                     <p>数字が大きいほど良い状態です</p>
                                 </div>
                                 <div className="score-scale" id="condition-scale">
@@ -639,7 +698,7 @@ function DailyLogPageContent() {
                                                 checked={log.score === score}
                                                 onChange={() => updateLog('score', score)}
                                                 onKeyDown={(event) => handleScoreKeyDown(event, score)}
-                                                disabled={saving}
+                                                disabled={saving || isReadOnly}
                                             />
                                             <span>{score}</span>
                                         </label>
@@ -650,31 +709,26 @@ function DailyLogPageContent() {
                             <section className="quick-step" aria-labelledby="practice-heading">
                                 <div className="quick-step-heading">
                                     <h2 id="practice-heading">2. 練習の記録</h2>
-                                    <span className="required-chip">必須</span>
+                                    {!isReadOnly && <span className="required-chip">必須</span>}
                                 </div>
                                 <div className="practice-options" role="radiogroup" aria-labelledby="practice-heading">
-                                    <label className={`practice-option${log.practiced === true ? ' practice-option-selected' : ''}`}>
-                                        <input
-                                            type="radio"
-                                            name="practiced"
-                                            checked={log.practiced === true}
-                                            onChange={() => updateLog('practiced', true)}
-                                            disabled={saving}
-                                        />
-                                        <PersonSimpleSwimIcon aria-hidden="true" size={25} weight="bold" />
-                                        <span>練習した</span>
-                                    </label>
-                                    <label className={`practice-option${log.practiced === false ? ' practice-option-selected' : ''}`}>
-                                        <input
-                                            type="radio"
-                                            name="practiced"
-                                            checked={log.practiced === false}
-                                            onChange={() => updateLog('practiced', false)}
-                                            disabled={saving}
-                                        />
-                                        <BedIcon aria-hidden="true" size={25} weight="bold" />
-                                        <span>お休み</span>
-                                    </label>
+                                    {ACTIVITY_OPTIONS.map(({ value, label, Icon }) => (
+                                        <label
+                                            key={value}
+                                            className={`practice-option${log.activityType === value ? ' practice-option-selected' : ''}`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="activityType"
+                                                value={value}
+                                                checked={log.activityType === value}
+                                                onChange={() => updateLog('activityType', value)}
+                                                disabled={saving || isReadOnly}
+                                            />
+                                            <Icon aria-hidden="true" size={25} weight="bold" />
+                                            <span>{label}</span>
+                                        </label>
+                                    ))}
                                 </div>
                             </section>
 
@@ -721,13 +775,14 @@ function DailyLogPageContent() {
                                     placeholder={activePromptDefinition.placeholder}
                                     maxLength={MAX_DAILY_TEXT_LENGTH}
                                     disabled={saving}
+                                    readOnly={isReadOnly}
                                     aria-invalid={log[activePrompt].length > MAX_DAILY_TEXT_LENGTH}
                                     aria-describedby={`quick-${activePrompt}-count`}
                                 />
                                 <p id={`quick-${activePrompt}-count`} className="quick-character-count">
                                     {log[activePrompt].length.toLocaleString('ja-JP')} / {MAX_DAILY_TEXT_LENGTH.toLocaleString('ja-JP')}
                                 </p>
-                                {activePrompt === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
+                                {!isReadOnly && activePrompt === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
                                     <button
                                         type="button"
                                         className="reuse-focus-button"
@@ -766,13 +821,14 @@ function DailyLogPageContent() {
                                                     placeholder={prompt.placeholder}
                                                     maxLength={MAX_DAILY_TEXT_LENGTH}
                                                     disabled={saving}
+                                                    readOnly={isReadOnly}
                                                     aria-invalid={log[prompt.key].length > MAX_DAILY_TEXT_LENGTH}
                                                     aria-describedby={`detail-${prompt.key}-count`}
                                                 />
                                                 <p id={`detail-${prompt.key}-count`} className="form-help">
                                                     {log[prompt.key].length.toLocaleString('ja-JP')} / {MAX_DAILY_TEXT_LENGTH.toLocaleString('ja-JP')}文字
                                                 </p>
-                                                {prompt.key === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
+                                                {!isReadOnly && prompt.key === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
                                                     <button
                                                         type="button"
                                                         className="reuse-focus-button"
@@ -788,7 +844,7 @@ function DailyLogPageContent() {
                                 </section>
                             )}
 
-                            {hasOversizedText && (
+                            {!isReadOnly && hasOversizedText && (
                                 <div className="alert alert-warning" role="alert">
                                     旧版で保存された長い内容を読み込んでいます。
                                     {oversizedFields.map((field) => field.label).join('、')}を
@@ -798,7 +854,9 @@ function DailyLogPageContent() {
 
                             {dirty && !draftStorageAvailable && (
                                 <p className="alert alert-danger" role="alert">
-                                    下書きはこのタブのメモリに一時保護しています。再読み込みやタブを閉じる前に保存してください。
+                                    {isReadOnly
+                                        ? '現在表示している入力は保存されていません。必要な内容をコピーしてから画面を移動してください。'
+                                        : '下書きはこのタブのメモリに一時保護しています。再読み込みやタブを閉じる前に保存してください。'}
                                 </p>
                             )}
 
@@ -813,15 +871,20 @@ function DailyLogPageContent() {
 
                             <div className="quick-save-area">
                                 <div className="quick-save-feedback" aria-live="polite">
-                                    {dirty && <span>下書きを自動保存しています</span>}
-                                    {!dirty && !message && <span>変更はありません</span>}
+                                    {isReadOnly
+                                        ? <span>退会中のため閲覧のみです</span>
+                                        : dirty
+                                            ? <span>下書きを自動保存しています</span>
+                                            : !message && <span>変更はありません</span>}
                                     {message && <span className="success-message">{message}</span>}
                                     {error && <span className="error-message" role="alert">{error}</span>}
                                 </div>
-                                <button type="submit" className="btn btn-primary quick-save-button" disabled={saving || !canSave}>
-                                    <FloppyDiskIcon aria-hidden="true" size={23} weight="bold" />
-                                    {saving ? '保存中…' : '今日の記録を保存'}
-                                </button>
+                                {!isReadOnly && (
+                                    <button type="submit" className="btn btn-primary quick-save-button" disabled={saving || !canSave}>
+                                        <FloppyDiskIcon aria-hidden="true" size={23} weight="bold" />
+                                        {saving ? '保存中…' : '今日の記録を保存'}
+                                    </button>
+                                )}
                             </div>
                         </form>
                     </>

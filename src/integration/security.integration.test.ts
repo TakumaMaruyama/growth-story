@@ -3,12 +3,32 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { createSession } from '../lib/auth';
 import {
+    archiveCompetitionGoal,
+    createCompetitionGoal,
+    deleteArchivedCompetitionGoal,
+    listCompetitionGoals,
+    updateCompetitionGoal,
+} from '../lib/competition-goal-service';
+import {
     countEligibleDailyLogs,
     DailyLogConflictError,
     saveDailyLog,
 } from '../lib/daily-log-service';
+import { GUARDIAN_CONSENT_NOTICE_VERSION } from '../lib/guardian-consent';
+import {
+    MembershipWriteBlockedError,
+    setMembershipStatus,
+} from '../lib/member-access';
 import { prisma } from '../lib/prisma';
 import { consumeRateLimits } from '../lib/rate-limit';
+import {
+    generateRegistrationInviteToken,
+    hashRegistrationInviteToken,
+} from '../lib/registration-invite';
+import {
+    registerInvitedUser,
+    RegistrationInviteUnavailableError,
+} from '../lib/registration-service';
 import { hashSessionToken } from '../lib/session-token';
 import { saveStoryVersion, StoryVersionConflictError } from '../lib/story-service';
 
@@ -109,7 +129,7 @@ test('security database invariants', async (context) => {
                 logDate,
                 baseRevision: null,
                 score: 5,
-                practiced: true,
+                activityType: 'PRACTICE',
                 goodText: 'Initial entry',
                 improveText: null,
                 tomorrowText: null,
@@ -118,11 +138,13 @@ test('security database invariants', async (context) => {
             const writes = [
                 {
                     score: 8,
+                    activityType: 'COMPETITION',
                     goodText: 'Concurrent write A',
                     tomorrowText: 'Follow-up A',
                 },
                 {
                     score: 9,
+                    activityType: 'REST',
                     goodText: 'Concurrent write B',
                     tomorrowText: 'Follow-up B',
                 },
@@ -133,7 +155,7 @@ test('security database invariants', async (context) => {
                     logDate,
                     baseRevision: 1,
                     score: write.score,
-                    practiced: true,
+                    activityType: write.activityType,
                     goodText: write.goodText,
                     improveText: null,
                     tomorrowText: write.tomorrowText,
@@ -151,13 +173,22 @@ test('security database invariants', async (context) => {
 
             const storedLog = await prisma.dailyLog.findUnique({
                 where: { userId_logDate: { userId: user.id, logDate } },
-                select: { revision: true, score: true, goodText: true, tomorrowText: true },
+                select: {
+                    revision: true,
+                    score: true,
+                    activityType: true,
+                    practiced: true,
+                    goodText: true,
+                    tomorrowText: true,
+                },
             });
             assert.ok(storedLog);
             assert.equal(await prisma.dailyLog.count({ where: { userId: user.id } }), 1);
             assert.equal(storedLog.revision, 2);
             const winningWrite = writes.find((write) => write.score === storedLog.score);
             assert.ok(winningWrite);
+            assert.equal(storedLog.activityType, winningWrite.activityType);
+            assert.equal(storedLog.practiced, winningWrite.activityType !== 'REST');
             assert.equal(storedLog.goodText, winningWrite.goodText);
             assert.equal(storedLog.tomorrowText, winningWrite.tomorrowText);
         } finally {
@@ -183,7 +214,7 @@ test('security database invariants', async (context) => {
                 logDate: throughDate,
                 baseRevision: null,
                 score: 6,
-                practiced: true,
+                activityType: 'PRACTICE',
                 goodText: null,
                 improveText: null,
                 tomorrowText: null,
@@ -193,7 +224,7 @@ test('security database invariants', async (context) => {
                 logDate: futureDate,
                 baseRevision: null,
                 score: 7,
-                practiced: true,
+                activityType: 'COMPETITION',
                 goodText: null,
                 improveText: null,
                 tomorrowText: null,
@@ -206,7 +237,7 @@ test('security database invariants', async (context) => {
                 logDate: throughDate,
                 baseRevision: 1,
                 score: 8,
-                practiced: false,
+                activityType: 'REST',
                 goodText: null,
                 improveText: null,
                 tomorrowText: null,
@@ -284,6 +315,262 @@ test('security database invariants', async (context) => {
             assert.equal(storedVersion.note, winningWrite.note);
         } finally {
             await prisma.user.delete({ where: { id: user.id } });
+        }
+    });
+
+    await context.test('registration invitations are single-use and create consent atomically', async () => {
+        const admin = await prisma.user.create({
+            data: {
+                loginId: `invite_admin_${randomUUID()}`,
+                displayName: 'Invite integration admin',
+                passwordHash: 'not-used-by-this-test',
+                role: 'ADMIN',
+            },
+            select: { id: true },
+        });
+        const token = generateRegistrationInviteToken();
+        const now = new Date('2026-08-03T00:00:00.000Z');
+        const loginIds = [
+            `invited_a_${randomUUID()}`,
+            `invited_b_${randomUUID()}`,
+        ] as const;
+
+        try {
+            const invite = await prisma.registrationInvite.create({
+                data: {
+                    tokenHash: hashRegistrationInviteToken(token),
+                    athleteName: '招待された選手',
+                    createdById: admin.id,
+                    expiresAt: new Date('2026-08-10T00:00:00.000Z'),
+                },
+                select: { id: true },
+            });
+
+            const attempts = await Promise.allSettled(loginIds.map((loginId, index) => (
+                registerInvitedUser({
+                    inviteToken: token,
+                    loginId,
+                    passwordHash: `not-used-${index}`,
+                    guardianName: `保護者 ${index + 1}`,
+                    guardianRelationship: index === 0 ? '父' : '母',
+                }, now)
+            )));
+
+            assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
+            assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
+            const rejected = attempts.find((result) => result.status === 'rejected');
+            assert.ok(rejected && rejected.status === 'rejected');
+            assert.ok(rejected.reason instanceof RegistrationInviteUnavailableError);
+
+            const storedInvite = await prisma.registrationInvite.findUniqueOrThrow({
+                where: { id: invite.id },
+                select: { tokenHash: true, usedAt: true, usedByUserId: true },
+            });
+            assert.equal(storedInvite.tokenHash, hashRegistrationInviteToken(token));
+            assert.equal(storedInvite.usedAt?.getTime(), now.getTime());
+            assert.ok(storedInvite.usedByUserId);
+
+            const registeredUsers = await prisma.user.findMany({
+                where: { loginId: { in: [...loginIds] } },
+                include: { guardianConsent: true },
+            });
+            assert.equal(registeredUsers.length, 1);
+            const registeredUser = registeredUsers[0];
+            assert.ok(registeredUser);
+            assert.equal(registeredUser.id, storedInvite.usedByUserId);
+            assert.equal(registeredUser.displayName, '招待された選手');
+            assert.equal(registeredUser.membershipStatus, 'ACTIVE');
+            assert.ok(registeredUser.guardianConsent);
+            assert.equal(
+                registeredUser.guardianConsent.noticeVersion,
+                GUARDIAN_CONSENT_NOTICE_VERSION,
+            );
+            assert.equal(registeredUser.guardianConsent.acceptedAt.getTime(), now.getTime());
+            assert.equal(
+                await prisma.adminAuditEvent.count({
+                    where: {
+                        actorId: admin.id,
+                        targetUserId: registeredUser.id,
+                        action: 'INVITED_USER_REGISTERED',
+                    },
+                }),
+                1,
+            );
+
+            await assert.rejects(
+                () => registerInvitedUser({
+                    inviteToken: token,
+                    loginId: `invite_reuse_${randomUUID()}`,
+                    passwordHash: 'not-used-reuse',
+                    guardianName: '再利用 保護者',
+                    guardianRelationship: '父',
+                }, now),
+                RegistrationInviteUnavailableError,
+            );
+        } finally {
+            await prisma.registrationInvite.deleteMany({ where: { createdById: admin.id } });
+            await prisma.adminAuditEvent.deleteMany({ where: { actorId: admin.id } });
+            await prisma.user.deleteMany({ where: { loginId: { in: [...loginIds] } } });
+            await prisma.user.delete({ where: { id: admin.id } });
+        }
+    });
+
+    await context.test('withdrawn members retain records and sessions but every content write is blocked', async () => {
+        const admin = await prisma.user.create({
+            data: {
+                loginId: `membership_admin_${randomUUID()}`,
+                displayName: 'Membership integration admin',
+                passwordHash: 'not-used-by-this-test',
+                role: 'ADMIN',
+            },
+            select: { id: true },
+        });
+        const member = await prisma.user.create({
+            data: {
+                loginId: `withdrawn_member_${randomUUID()}`,
+                displayName: 'Withdrawn integration member',
+                passwordHash: 'not-used-by-this-test',
+            },
+            select: { id: true },
+        });
+        const logDate = new Date('2026-04-01T00:00:00.000Z');
+
+        try {
+            await createSession(member.id);
+            await saveDailyLog({
+                userId: member.id,
+                logDate,
+                baseRevision: null,
+                score: 6,
+                activityType: 'PRACTICE',
+                goodText: '退会前の日誌',
+                improveText: null,
+                tomorrowText: null,
+            });
+            await saveStoryVersion(member.id, {
+                baseVersion: null,
+                answers: [{ questionNo: 1, answerText: '退会前の物語' }],
+                note: null,
+            });
+            const activeGoal = await createCompetitionGoal(member.id, {
+                type: 'NEXT_MEET',
+                title: '退会前の大会目標',
+                details: '大会名',
+                targetDate: new Date('2026-09-01T00:00:00.000Z'),
+            });
+            const goalToArchive = await createCompetitionGoal(member.id, {
+                type: 'MILESTONE',
+                title: '退会前の過去目標',
+                details: null,
+                targetDate: new Date('2026-12-31T00:00:00.000Z'),
+            });
+            const archivedGoal = await archiveCompetitionGoal(
+                member.id,
+                goalToArchive.id,
+                goalToArchive.revision,
+            );
+
+            const statusChange = await setMembershipStatus(admin.id, member.id, 'WITHDRAWN');
+            assert.equal(statusChange.changed, true);
+            assert.ok(statusChange.withdrawnAt);
+
+            const withdrawn = await prisma.user.findUniqueOrThrow({
+                where: { id: member.id },
+                select: { membershipStatus: true, withdrawnAt: true },
+            });
+            assert.equal(withdrawn.membershipStatus, 'WITHDRAWN');
+            assert.ok(withdrawn.withdrawnAt);
+            assert.equal(await prisma.session.count({ where: { userId: member.id } }), 1);
+
+            // Read paths deliberately remain available and all pre-withdrawal data stays intact.
+            assert.equal(await countEligibleDailyLogs(member.id, logDate), 1);
+            assert.equal(await prisma.storyVersion.count({ where: { userId: member.id } }), 1);
+            assert.equal((await listCompetitionGoals(member.id, true)).length, 2);
+
+            await assert.rejects(
+                () => saveDailyLog({
+                    userId: member.id,
+                    logDate,
+                    baseRevision: 1,
+                    score: 8,
+                    activityType: 'REST',
+                    goodText: '更新できない日誌',
+                    improveText: null,
+                    tomorrowText: null,
+                }),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => saveDailyLog({
+                    userId: member.id,
+                    logDate: new Date('2026-04-02T00:00:00.000Z'),
+                    baseRevision: null,
+                    score: 8,
+                    activityType: 'PRACTICE',
+                    goodText: '新規作成できない日誌',
+                    improveText: null,
+                    tomorrowText: null,
+                }),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => saveStoryVersion(member.id, {
+                    baseVersion: 1,
+                    answers: [{ questionNo: 1, answerText: '更新できない物語' }],
+                    note: null,
+                }),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => createCompetitionGoal(member.id, {
+                    type: 'NEXT_MEET',
+                    title: '追加できない目標',
+                    details: null,
+                    targetDate: null,
+                }),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => updateCompetitionGoal(member.id, activeGoal.id, {
+                    baseRevision: activeGoal.revision,
+                    title: '更新できない目標',
+                }),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => archiveCompetitionGoal(member.id, activeGoal.id, activeGoal.revision),
+                MembershipWriteBlockedError,
+            );
+            await assert.rejects(
+                () => deleteArchivedCompetitionGoal(
+                    member.id,
+                    archivedGoal.id,
+                    archivedGoal.revision,
+                ),
+                MembershipWriteBlockedError,
+            );
+
+            assert.equal(await prisma.dailyLog.count({ where: { userId: member.id } }), 1);
+            assert.equal(await prisma.storyVersion.count({ where: { userId: member.id } }), 1);
+            assert.equal(await prisma.competitionGoal.count({ where: { userId: member.id } }), 2);
+
+            const reactivated = await setMembershipStatus(admin.id, member.id, 'ACTIVE');
+            assert.equal(reactivated.changed, true);
+            assert.equal(reactivated.withdrawnAt, null);
+            assert.deepEqual(await saveDailyLog({
+                userId: member.id,
+                logDate,
+                baseRevision: 1,
+                score: 7,
+                activityType: 'PRACTICE',
+                goodText: '利用再開後の日誌',
+                improveText: null,
+                tomorrowText: null,
+            }), { revision: 2 });
+        } finally {
+            await prisma.adminAuditEvent.deleteMany({ where: { actorId: admin.id } });
+            await prisma.user.delete({ where: { id: member.id } });
+            await prisma.user.delete({ where: { id: admin.id } });
         }
     });
 });

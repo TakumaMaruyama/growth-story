@@ -3,19 +3,13 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {
     archiveCompetitionGoal,
-    CompetitionGoalLimitError,
     CompetitionGoalNotFoundError,
-    CompetitionGoalSingletonConflictError,
     CompetitionGoalVersionConflictError,
     createCompetitionGoal,
     deleteArchivedCompetitionGoal,
     listCompetitionGoals,
     updateCompetitionGoal,
 } from '../lib/competition-goal-service';
-import {
-    MAX_ACTIVE_MILESTONE_GOALS,
-    MAX_COMPETITION_GOALS_PER_USER,
-} from '../lib/limits';
 import { prisma } from '../lib/prisma';
 
 const integrationDatabaseUrl = process.env.DATABASE_URL;
@@ -48,7 +42,7 @@ test('competition goal database invariants', async (context) => {
     });
 
     try {
-        await context.test('concurrent singleton creation allows only one active goal', async () => {
+        await context.test('concurrent meet creation allows multiple active goals', async () => {
             const attempts = await Promise.allSettled([
                 createCompetitionGoal(owner.id, {
                     type: 'NEXT_MEET',
@@ -63,13 +57,16 @@ test('competition goal database invariants', async (context) => {
                     targetDate: null,
                 }),
             ]);
-            assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
-            const rejection = attempts.find((result) => result.status === 'rejected');
-            assert.ok(rejection && rejection.status === 'rejected');
-            assert.ok(rejection.reason instanceof CompetitionGoalSingletonConflictError);
+            assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 2);
+            assert.equal(
+                await prisma.competitionGoal.count({
+                    where: { userId: owner.id, type: 'NEXT_MEET', isActive: true },
+                }),
+                2,
+            );
         });
 
-        await context.test('archive preserves history and permits the next singleton goal', async () => {
+        await context.test('archive preserves history and permits another meet goal', async () => {
             const current = await prisma.competitionGoal.findFirstOrThrow({
                 where: { userId: owner.id, type: 'NEXT_MEET', isActive: true },
             });
@@ -90,21 +87,26 @@ test('competition goal database invariants', async (context) => {
             assert.equal((await listCompetitionGoals(owner.id)).some((goal) => goal.id === current.id), false);
         });
 
-        await context.test('annual goals retain their target year after archiving', async () => {
-            const annual = await createCompetitionGoal(owner.id, {
-                type: 'ANNUAL',
-                title: 'Annual target',
-                details: null,
-                targetDate: new Date('2026-12-31T00:00:00.000Z'),
-            });
-            await assert.rejects(
+        await context.test('concurrent annual goals remain active and retain their target year', async () => {
+            const [annual] = await Promise.all([
                 createCompetitionGoal(owner.id, {
                     type: 'ANNUAL',
-                    title: 'Duplicate annual target',
+                    title: 'Annual target A',
                     details: null,
                     targetDate: new Date('2026-12-31T00:00:00.000Z'),
                 }),
-                CompetitionGoalSingletonConflictError,
+                createCompetitionGoal(owner.id, {
+                    type: 'ANNUAL',
+                    title: 'Annual target B',
+                    details: null,
+                    targetDate: new Date('2027-12-31T00:00:00.000Z'),
+                }),
+            ]);
+            assert.equal(
+                await prisma.competitionGoal.count({
+                    where: { userId: owner.id, type: 'ANNUAL', isActive: true },
+                }),
+                2,
             );
 
             await archiveCompetitionGoal(owner.id, annual.id, annual.revision);
@@ -159,9 +161,10 @@ test('competition goal database invariants', async (context) => {
             assert.deepEqual(await listCompetitionGoals(otherUser.id), []);
         });
 
-        await context.test('concurrent milestones cannot exceed the active limit', async () => {
+        await context.test('more than twenty concurrent milestones can remain active', async () => {
+            const concurrentGoalCount = 25;
             const attempts = await Promise.allSettled(
-                Array.from({ length: MAX_ACTIVE_MILESTONE_GOALS + 5 }, (_, index) => (
+                Array.from({ length: concurrentGoalCount }, (_, index) => (
                     createCompetitionGoal(owner.id, {
                         type: 'MILESTONE',
                         title: `Milestone ${index + 1}`,
@@ -172,23 +175,25 @@ test('competition goal database invariants', async (context) => {
             );
             assert.equal(
                 attempts.filter((result) => result.status === 'fulfilled').length,
-                MAX_ACTIVE_MILESTONE_GOALS,
+                concurrentGoalCount,
             );
-            const rejections = attempts.filter((result) => result.status === 'rejected');
-            assert.equal(rejections.length, 5);
             assert.equal(
-                rejections.every((result) => result.reason instanceof CompetitionGoalLimitError),
-                true,
+                await prisma.competitionGoal.count({
+                    where: { userId: owner.id, type: 'MILESTONE', isActive: true },
+                }),
+                concurrentGoalCount,
             );
         });
 
-        await context.test('total history limit prevents unbounded archived goals', async () => {
+        await context.test('goals can be added after the previous 250-record threshold', async () => {
+            const previousLimit = 250;
             const existingCount = await prisma.competitionGoal.count({
                 where: { userId: owner.id },
             });
+            assert.ok(existingCount < previousLimit + 1);
             await prisma.competitionGoal.createMany({
                 data: Array.from(
-                    { length: MAX_COMPETITION_GOALS_PER_USER - existingCount },
+                    { length: previousLimit + 1 - existingCount },
                     (_, index) => ({
                         userId: owner.id,
                         type: 'MILESTONE' as const,
@@ -200,15 +205,16 @@ test('competition goal database invariants', async (context) => {
                 ),
             });
 
-            await assert.rejects(
-                createCompetitionGoal(owner.id, {
-                    type: 'MILESTONE',
-                    title: 'One goal too many',
-                    details: null,
-                    targetDate: new Date('2029-12-31T00:00:00.000Z'),
-                }),
-                (error: unknown) => error instanceof CompetitionGoalLimitError
-                    && error.kind === 'total',
+            const goalBeyondPreviousLimit = await createCompetitionGoal(owner.id, {
+                type: 'MILESTONE',
+                title: 'Goal beyond the previous limit',
+                details: null,
+                targetDate: new Date('2029-12-31T00:00:00.000Z'),
+            });
+            assert.equal(goalBeyondPreviousLimit.isActive, true);
+            assert.equal(
+                await prisma.competitionGoal.count({ where: { userId: owner.id } }),
+                previousLimit + 2,
             );
 
             const archivedGoal = await prisma.competitionGoal.findFirstOrThrow({
@@ -224,14 +230,6 @@ test('competition goal database invariants', async (context) => {
                 await prisma.competitionGoal.findUnique({ where: { id: archivedGoal.id } }),
                 null,
             );
-
-            const annualAfterCleanup = await createCompetitionGoal(owner.id, {
-                type: 'ANNUAL',
-                title: 'Annual goal after history cleanup',
-                details: null,
-                targetDate: new Date('2030-12-31T00:00:00.000Z'),
-            });
-            assert.equal(annualAfterCleanup.type, 'ANNUAL');
         });
     } finally {
         await prisma.user.deleteMany({ where: { id: { in: [owner.id, otherUser.id] } } });

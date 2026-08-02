@@ -4,6 +4,7 @@ export interface StoryReadResponse {
     user: {
         id: string;
         displayName: string;
+        membershipStatus: 'ACTIVE' | 'WITHDRAWN';
     };
     story: {
         version: number;
@@ -38,13 +39,18 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
         || !value.user.id
         || typeof value.user.displayName !== 'string'
         || !value.user.displayName
+        || (value.user.membershipStatus !== 'ACTIVE' && value.user.membershipStatus !== 'WITHDRAWN')
     ) {
         return null;
     }
 
     if (value.story === null) {
         return {
-            user: { id: value.user.id, displayName: value.user.displayName },
+            user: {
+                id: value.user.id,
+                displayName: value.user.displayName,
+                membershipStatus: value.user.membershipStatus,
+            },
             story: null,
         };
     }
@@ -77,7 +83,11 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
     }
 
     return {
-        user: { id: value.user.id, displayName: value.user.displayName },
+        user: {
+            id: value.user.id,
+            displayName: value.user.displayName,
+            membershipStatus: value.user.membershipStatus,
+        },
         story: { version: value.story.version, answers, legacyAnswerCount },
     };
 }

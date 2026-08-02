@@ -77,6 +77,8 @@ export async function getSessionFromCookie() {
                     email: true,
                     role: true,
                     isActive: true,
+                    membershipStatus: true,
+                    withdrawnAt: true,
                     createdAt: true,
                     updatedAt: true,
                 },

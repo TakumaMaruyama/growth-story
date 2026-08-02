@@ -4,9 +4,7 @@ import { serializeCompetitionGoal } from '@/lib/competition-goal-contract';
 import { competitionGoalWriteRateLimitRules } from '@/lib/competition-goal-rate-limit';
 import {
     CompetitionGoalInvalidInputError,
-    CompetitionGoalLimitError,
     CompetitionGoalNotFoundError,
-    CompetitionGoalSingletonConflictError,
     CompetitionGoalVersionConflictError,
     archiveCompetitionGoal,
     updateCompetitionGoal,
@@ -18,9 +16,11 @@ import {
 import { consumeRateLimits } from '@/lib/rate-limit';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import {
-    MAX_ACTIVE_MILESTONE_GOALS,
-    MAX_COMPETITION_GOALS_PER_USER,
-} from '@/lib/limits';
+    canMemberWrite,
+    MEMBERSHIP_WITHDRAWN_CODE,
+    MEMBERSHIP_WITHDRAWN_MESSAGE,
+    MembershipWriteBlockedError,
+} from '@/lib/member-access';
 
 interface Props {
     params: Promise<{ goalId: string }>;
@@ -31,6 +31,14 @@ async function authorizeWrite() {
     if (!user) return { response: jsonResponse({ error: '認証が必要です' }, 401) } as const;
     if (user.role !== 'USER') {
         return { response: jsonResponse({ error: 'この機能は選手専用です' }, 403) } as const;
+    }
+    if (!canMemberWrite(user)) {
+        return {
+            response: jsonResponse({
+                error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+                code: MEMBERSHIP_WITHDRAWN_CODE,
+            }, 403),
+        } as const;
     }
 
     const rateLimit = await consumeRateLimits(competitionGoalWriteRateLimitRules(user.id));
@@ -46,6 +54,12 @@ async function authorizeWrite() {
 }
 
 function goalWriteErrorResponse(error: unknown) {
+    if (error instanceof MembershipWriteBlockedError) {
+        return jsonResponse({
+            error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+            code: MEMBERSHIP_WITHDRAWN_CODE,
+        }, 403);
+    }
     if (error instanceof CompetitionGoalNotFoundError) {
         return jsonResponse({ error: '大会目標が見つかりません' }, 404);
     }
@@ -54,24 +68,6 @@ function goalWriteErrorResponse(error: unknown) {
             error: '別の画面で大会目標が更新されました。再読み込みして内容を確認してください',
             code: 'GOAL_VERSION_CONFLICT',
             currentRevision: error.currentRevision,
-        }, 409);
-    }
-    if (error instanceof CompetitionGoalSingletonConflictError) {
-        return jsonResponse({
-            error: 'この種類の有効な目標はすでにあります',
-            code: 'GOAL_SINGLETON_CONFLICT',
-        }, 409);
-    }
-    if (error instanceof CompetitionGoalLimitError) {
-        if (error.kind === 'total') {
-            return jsonResponse({
-                error: `大会目標の保存上限（${MAX_COMPETITION_GOALS_PER_USER}件）に達しました。過去の目標を整理してから再度お試しください`,
-                code: 'GOAL_TOTAL_LIMIT',
-            }, 409);
-        }
-        return jsonResponse({
-            error: `期限つき目標の登録上限（${MAX_ACTIVE_MILESTONE_GOALS}件）に達しました`,
-            code: 'GOAL_ACTIVE_LIMIT',
         }, 409);
     }
     if (error instanceof CompetitionGoalInvalidInputError) {

@@ -112,9 +112,7 @@ export default function LoginForm({ adminOnly = false, returnTo = null }: LoginF
                             <Link href="/login">通常ログインへ戻る</Link>
                         ) : (
                             <>
-                                <Link href={returnTo ? `/register?next=${encodeURIComponent(returnTo)}` : '/register'}>
-                                    新しくアカウントを作る
-                                </Link>
+                                <span className="muted">会員登録は、管理者から送られた登録URLから行ってください。</span>
                                 <Link href={loginHref(null, 'admin')}>管理者ログイン</Link>
                             </>
                         )}

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { formatJSTDisplay, parseDateOnly } from '@/lib/date';
+import { getDailyActivityLabel } from '@/lib/daily-activity';
 import Nav from '@/components/Nav';
 
 interface Props {
@@ -52,8 +53,8 @@ export default async function AdminUserDailyDetailPage({ params }: Props) {
                     <dl className="detail-list">
                         <dt>自己評価</dt>
                         <dd><strong>{log.score}/10</strong></dd>
-                        <dt>練習</dt>
-                        <dd>{log.practiced ? 'あり' : 'なし'}</dd>
+                        <dt>区分</dt>
+                        <dd>{getDailyActivityLabel(log.activityType)}</dd>
                     </dl>
                 </section>
 

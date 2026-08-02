@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
+import { isPracticedActivity, type DailyActivityType } from './daily-activity';
+import { assertMemberWritableInTransaction } from './member-access';
 
 export class DailyLogConflictError extends Error {
     constructor() {
@@ -12,7 +14,7 @@ export interface DailyLogSaveInput {
     logDate: Date;
     baseRevision: number | null;
     score: number;
-    practiced: boolean;
+    activityType: DailyActivityType;
     goodText: string | null;
     improveText: string | null;
     tomorrowText: string | null;
@@ -36,28 +38,39 @@ export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision
         logDate,
         baseRevision,
         score,
-        practiced,
+        activityType,
         goodText,
         improveText,
         tomorrowText,
     } = input;
-    const values = { score, practiced, goodText, improveText, tomorrowText };
-
-    if (baseRevision !== null) {
-        const updated = await prisma.dailyLog.updateManyAndReturn({
-            where: { userId, logDate, revision: baseRevision },
-            data: { ...values, revision: { increment: 1 } },
-            select: { revision: true },
-        });
-        if (updated.length !== 1 || !updated[0]) throw new DailyLogConflictError();
-        return updated[0];
-    }
+    const values = {
+        score,
+        activityType,
+        practiced: isPracticedActivity(activityType),
+        goodText,
+        improveText,
+        tomorrowText,
+    };
 
     try {
-        return await prisma.dailyLog.create({
-            data: { userId, logDate, ...values },
-            select: { revision: true },
-        });
+        return await prisma.$transaction(async (tx) => {
+            await assertMemberWritableInTransaction(tx, userId);
+
+            if (baseRevision !== null) {
+                const updated = await tx.dailyLog.updateManyAndReturn({
+                    where: { userId, logDate, revision: baseRevision },
+                    data: { ...values, revision: { increment: 1 } },
+                    select: { revision: true },
+                });
+                if (updated.length !== 1 || !updated[0]) throw new DailyLogConflictError();
+                return updated[0];
+            }
+
+            return tx.dailyLog.create({
+                data: { userId, logDate, ...values },
+                select: { revision: true },
+            });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
         if (
             error instanceof Prisma.PrismaClientKnownRequestError

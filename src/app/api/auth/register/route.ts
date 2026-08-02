@@ -3,21 +3,64 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createSession, hashPassword, setSessionCookie } from '@/lib/auth';
 import { readJsonObject, jsonResponse } from '@/lib/request';
-import { parseAccountInput } from '@/lib/validation';
+import { parseInviteRegistrationInput } from '@/lib/validation';
 import {
     consumeRateLimits,
     getClientIdentifier,
     type RateLimitRule,
 } from '@/lib/rate-limit';
+import {
+    hashRegistrationInviteToken,
+    isRegistrationInviteToken,
+    isRegistrationInviteUsable,
+} from '@/lib/registration-invite';
+import {
+    registerInvitedUser,
+    RegistrationInviteUnavailableError,
+} from '@/lib/registration-service';
+
+const UNAVAILABLE_INVITE_MESSAGE = 'この登録URLは利用できません。管理者へ再発行を依頼してください';
+
+export async function GET(request: NextRequest) {
+    const inviteToken = request.nextUrl.searchParams.get('invite');
+    if (!isRegistrationInviteToken(inviteToken)) {
+        return jsonResponse({ error: UNAVAILABLE_INVITE_MESSAGE }, 404);
+    }
+
+    try {
+        const invite = await prisma.registrationInvite.findUnique({
+            where: { tokenHash: hashRegistrationInviteToken(inviteToken) },
+            select: {
+                athleteName: true,
+                expiresAt: true,
+                usedAt: true,
+                revokedAt: true,
+            },
+        });
+        if (!invite || !isRegistrationInviteUsable(invite)) {
+            return jsonResponse({ error: UNAVAILABLE_INVITE_MESSAGE }, 410);
+        }
+        return jsonResponse({ athleteName: invite.athleteName, expiresAt: invite.expiresAt });
+    } catch (error) {
+        console.error('Registration invite read error:', error);
+        return jsonResponse({ error: '登録URLを確認できませんでした' }, 500);
+    }
+}
 
 export async function POST(request: NextRequest) {
     try {
         const json = await readJsonObject(request, 32 * 1024);
         if (!json.ok) return json.response;
-        const input = parseAccountInput(json.data);
+        const input = parseInviteRegistrationInput(json.data);
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        const { loginId, displayName, password } = input.value;
+        const {
+            inviteToken,
+            loginId,
+            password,
+            guardianName,
+            guardianRelationship,
+        } = input.value;
         const registrationRule: RateLimitRule = {
             namespace: 'registration-source',
             identifier: getClientIdentifier(request),
@@ -39,24 +82,13 @@ export async function POST(request: NextRequest) {
             response.headers.set('Retry-After', String(rateLimit.retryAfterSeconds));
             return response;
         }
-        const existing = await prisma.user.findUnique({
-            where: { loginId },
-            select: { id: true },
-        });
-
-        if (existing) {
-            return jsonResponse({ error: 'このログインIDは既に使用されています' }, 409);
-        }
-
         const passwordHash = await hashPassword(password);
-        const user = await prisma.user.create({
-            data: {
-                loginId,
-                displayName,
-                passwordHash,
-                role: 'USER',
-                isActive: true,
-            },
+        const user = await registerInvitedUser({
+            inviteToken,
+            loginId,
+            passwordHash,
+            guardianName,
+            guardianRelationship,
         });
 
         const token = await createSession(user.id);
@@ -64,6 +96,9 @@ export async function POST(request: NextRequest) {
 
         return jsonResponse({ success: true, role: user.role }, 201);
     } catch (error) {
+        if (error instanceof RegistrationInviteUnavailableError) {
+            return jsonResponse({ error: UNAVAILABLE_INVITE_MESSAGE }, 410);
+        }
         if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
             error.code === 'P2002'

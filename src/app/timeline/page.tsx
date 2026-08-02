@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { formatJSTDate, formatJSTDateTime, formatJSTDisplay, parseDateOnly } from '@/lib/date';
+import { getDailyActivityLabel, type DailyActivityType } from '@/lib/daily-activity';
 import Nav from '@/components/Nav';
 
 export const metadata: Metadata = { title: '振り返り' };
@@ -19,7 +20,7 @@ interface TimelineRow {
     version: number | null;
     note: string | null;
     score: number | null;
-    practiced: boolean | null;
+    activityType: DailyActivityType | null;
 }
 
 interface TimelineItem {
@@ -76,7 +77,7 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
             "version",
             "note",
             NULL::integer AS "score",
-            NULL::boolean AS "practiced"
+            NULL::text AS "activityType"
         FROM "story_versions"
         WHERE "user_id" = ${user.id}
 
@@ -90,7 +91,7 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
             NULL::integer AS "version",
             NULL::text AS "note",
             "score",
-            "practiced"
+            "activity_type"::text AS "activityType"
         FROM "daily_logs"
         WHERE "user_id" = ${user.id}
 
@@ -114,19 +115,21 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
 
         const logDate = row.logDate ?? formatJSTDate(row.eventDate);
         const parsedLogDate = parseDateOnly(logDate);
+        if (!row.activityType) throw new Error('Daily activity type is missing');
         return {
             id: `daily-${row.recordId}`,
             date: row.eventDate,
             dateLabel: parsedLogDate ? formatJSTDisplay(parsedLogDate) : logDate,
             type: 'daily',
             title: '練習日誌',
-            description: `自己評価 ${row.score}/10・練習${row.practiced ? 'あり' : 'なし'}`,
+            description: `自己評価 ${row.score}/10・${getDailyActivityLabel(row.activityType)}`,
             href: `/daily?date=${encodeURIComponent(logDate)}`,
         };
     });
 
     const firstItemNumber = totalItems === 0 ? 0 : offset + 1;
     const lastItemNumber = Math.min(offset + timeline.length, totalItems);
+    const isReadOnly = user.membershipStatus === 'WITHDRAWN';
 
     return (
         <>
@@ -139,6 +142,12 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
                         <p className="muted">日々の練習と、物語の変化を時系列で確認できます。</p>
                     </div>
                 </div>
+
+                {isReadOnly && (
+                    <div className="alert alert-warning" role="status">
+                        退会中のため、過去の記録のみ閲覧できます。利用再開は管理者へご連絡ください。
+                    </div>
+                )}
 
                 {timeline.length > 0 ? (
                     <>
@@ -186,11 +195,13 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
                 ) : (
                     <div className="card empty-state">
                         <p>まだ記録がありません。</p>
-                        <div className="button-row" style={{ justifyContent: 'center' }}>
-                            <Link href="/daily" className="btn btn-primary">練習日誌を書く</Link>
-                            <Link href="/goals" className="btn btn-secondary">大会目標を決める</Link>
-                            <Link href="/story/edit" className="btn btn-secondary">競泳物語を書く</Link>
-                        </div>
+                        {!isReadOnly && (
+                            <div className="button-row" style={{ justifyContent: 'center' }}>
+                                <Link href="/daily" className="btn btn-primary">練習日誌を書く</Link>
+                                <Link href="/goals" className="btn btn-secondary">大会目標を決める</Link>
+                                <Link href="/story/edit" className="btn btn-secondary">競泳物語を書く</Link>
+                            </div>
+                        )}
                     </div>
                 )}
             </main>

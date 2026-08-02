@@ -9,6 +9,12 @@ import {
 import { parseCompetitionGoalDeleteInput } from '@/lib/competition-goal-validation';
 import { consumeRateLimits } from '@/lib/rate-limit';
 import { jsonResponse, readJsonObject } from '@/lib/request';
+import {
+    canMemberWrite,
+    MEMBERSHIP_WITHDRAWN_CODE,
+    MEMBERSHIP_WITHDRAWN_MESSAGE,
+    MembershipWriteBlockedError,
+} from '@/lib/member-access';
 
 interface Props {
     params: Promise<{ goalId: string }>;
@@ -18,6 +24,12 @@ export async function DELETE(request: NextRequest, { params }: Props) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
     if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    if (!canMemberWrite(user)) {
+        return jsonResponse({
+            error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+            code: MEMBERSHIP_WITHDRAWN_CODE,
+        }, 403);
+    }
 
     try {
         const rateLimit = await consumeRateLimits(competitionGoalWriteRateLimitRules(user.id));
@@ -39,6 +51,12 @@ export async function DELETE(request: NextRequest, { params }: Props) {
         await deleteArchivedCompetitionGoal(user.id, goalId, input.value.baseRevision);
         return jsonResponse({ success: true });
     } catch (error) {
+        if (error instanceof MembershipWriteBlockedError) {
+            return jsonResponse({
+                error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+                code: MEMBERSHIP_WITHDRAWN_CODE,
+            }, 403);
+        }
         if (error instanceof CompetitionGoalNotFoundError) {
             return jsonResponse({ error: '過去の大会目標が見つかりません' }, 404);
         }

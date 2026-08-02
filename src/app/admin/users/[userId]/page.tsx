@@ -2,12 +2,23 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { formatJSTDisplay } from '@/lib/date';
+import { formatJSTDateTime, formatJSTDisplay, todayJST } from '@/lib/date';
+import { getDailyActivityLabel } from '@/lib/daily-activity';
+import {
+    getCompetitionGoalDisplayValues,
+    sortCompetitionGoalsForDisplay,
+} from '@/lib/competition-goal-display';
 import Nav from '@/components/Nav';
 
 interface Props {
     params: Promise<{ userId: string }>;
 }
+
+const GOAL_LABELS = {
+    NEXT_MEET: '大会',
+    ANNUAL: '年間',
+    MILESTONE: '出場目標',
+} as const;
 
 export default async function AdminUserDetailPage({ params }: Props) {
     const { userId } = await params;
@@ -21,7 +32,17 @@ export default async function AdminUserDetailPage({ params }: Props) {
                 loginId: true,
                 displayName: true,
                 isActive: true,
+                membershipStatus: true,
+                withdrawnAt: true,
                 createdAt: true,
+                guardianConsent: {
+                    select: {
+                        guardianName: true,
+                        guardianRelationship: true,
+                        noticeVersion: true,
+                        acceptedAt: true,
+                    },
+                },
                 _count: { select: { dailyLogs: true, storyVersions: true, competitionGoals: true } },
             },
         }),
@@ -33,17 +54,33 @@ export default async function AdminUserDetailPage({ params }: Props) {
         prisma.dailyLog.findFirst({
             where: { userId },
             orderBy: { logDate: 'desc' },
-            select: { logDate: true, score: true, practiced: true },
+            select: { logDate: true, score: true, activityType: true },
         }),
         prisma.competitionGoal.findMany({
             where: { userId, isActive: true },
-            orderBy: [{ targetDate: 'asc' }, { updatedAt: 'desc' }],
-            select: { id: true, type: true, title: true, targetDate: true },
+            orderBy: { updatedAt: 'desc' },
+            select: {
+                id: true,
+                type: true,
+                title: true,
+                details: true,
+                targetDate: true,
+                updatedAt: true,
+            },
         }),
     ]);
 
     if (!targetUser) notFound();
-    const primaryGoal = activeGoals[0];
+    const today = todayJST();
+    const primaryGoal = sortCompetitionGoalsForDisplay(activeGoals, today)[0];
+    const primaryGoalDisplay = primaryGoal
+        ? getCompetitionGoalDisplayValues(primaryGoal)
+        : null;
+    const primaryGoalTarget = primaryGoal?.targetDate
+        ? primaryGoal.type === 'ANNUAL'
+            ? `${primaryGoal.targetDate.getUTCFullYear()}年`
+            : `${formatJSTDisplay(primaryGoal.targetDate)}${primaryGoal.type === 'MILESTONE' ? 'まで' : ''}`
+        : '日付未定';
 
     return (
         <>
@@ -66,14 +103,36 @@ export default async function AdminUserDetailPage({ params }: Props) {
                             <dd><strong>{targetUser.loginId}</strong></dd>
                             <dt>表示名</dt>
                             <dd><strong>{targetUser.displayName}</strong></dd>
-                            <dt>状態</dt>
+                            <dt>会員状態</dt>
+                            <dd>
+                                <span className={`badge ${targetUser.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
+                                    {targetUser.membershipStatus === 'ACTIVE' ? '利用中' : '退会'}
+                                </span>
+                            </dd>
+                            {targetUser.withdrawnAt && (
+                                <>
+                                    <dt>退会・同意撤回日</dt>
+                                    <dd>{formatJSTDateTime(targetUser.withdrawnAt)}</dd>
+                                </>
+                            )}
+                            <dt>ログイン</dt>
                             <dd>
                                 <span className={`badge ${targetUser.isActive ? 'badge-primary' : 'badge-secondary'}`}>
-                                    {targetUser.isActive ? '有効' : '無効'}
+                                    {targetUser.isActive ? '可能' : '停止'}
                                 </span>
                             </dd>
                             <dt>登録日</dt>
                             <dd>{formatJSTDisplay(targetUser.createdAt)}</dd>
+                            <dt>保護者同意</dt>
+                            <dd>
+                                {targetUser.guardianConsent ? (
+                                    <>
+                                        <strong>同意記録あり</strong><br />
+                                        {targetUser.guardianConsent.guardianName}（{targetUser.guardianConsent.guardianRelationship}）<br />
+                                        {formatJSTDateTime(targetUser.guardianConsent.acceptedAt)}・版 {targetUser.guardianConsent.noticeVersion}
+                                    </>
+                                ) : '記録なし（招待登録前の既存会員）'}
+                            </dd>
                         </dl>
                     </section>
 
@@ -104,7 +163,7 @@ export default async function AdminUserDetailPage({ params }: Props) {
                             {latestDailyLog ? (
                                 <>
                                     <p>{formatJSTDisplay(latestDailyLog.logDate)}</p>
-                                    <p className="muted">自己評価 {latestDailyLog.score}/10・練習{latestDailyLog.practiced ? 'あり' : 'なし'}</p>
+                                    <p className="muted">自己評価 {latestDailyLog.score}/10・{getDailyActivityLabel(latestDailyLog.activityType)}</p>
                                 </>
                             ) : <p className="muted">記録なし</p>}
                         </div>
@@ -112,11 +171,17 @@ export default async function AdminUserDetailPage({ params }: Props) {
                             <h3 className="question-title">大会目標</h3>
                             {primaryGoal ? (
                                 <>
-                                    <p>{primaryGoal.title}</p>
-                                    <p className="muted">
-                                        有効な目標 {activeGoals.length}件
-                                        {primaryGoal.targetDate && `・${formatJSTDisplay(primaryGoal.targetDate)}まで`}
+                                    <p>
+                                        {primaryGoalDisplay?.meetName
+                                            || primaryGoalDisplay?.goalText
+                                            || GOAL_LABELS[primaryGoal.type]}
                                     </p>
+                                    <p className="muted">
+                                        {GOAL_LABELS[primaryGoal.type]}・{primaryGoalTarget}・設定中 {activeGoals.length}件
+                                    </p>
+                                    {primaryGoalDisplay?.meetName && primaryGoalDisplay.goalText && (
+                                        <p className="muted">{primaryGoalDisplay.goalText}</p>
+                                    )}
                                 </>
                             ) : <p className="muted">記録なし</p>}
                         </div>

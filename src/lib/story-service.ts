@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { MAX_STORY_VERSIONS } from './limits';
 import type { StoryInput } from './validation';
+import { assertMemberWritableInTransaction } from './member-access';
 
 export class StoryLimitError extends Error {}
 
@@ -26,6 +27,7 @@ export async function saveStoryVersion(userId: string, input: StoryInput) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
             return await prisma.$transaction(async (tx) => {
+                await assertMemberWritableInTransaction(tx, userId);
                 const [versionCount, latestVersion] = await Promise.all([
                     tx.storyVersion.count({ where: { userId } }),
                     tx.storyVersion.findFirst({
@@ -65,7 +67,10 @@ export async function saveStoryVersion(userId: string, input: StoryInput) {
                     },
                 });
                 return { version, unchanged: false };
-            }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+            // The per-user advisory lock serializes story writes. READ COMMITTED
+            // also guarantees that, after waiting for a concurrent withdrawal,
+            // the membership check sees the newly committed read-only state.
+            }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
         } catch (error) {
             const isRetryable = error instanceof Prisma.PrismaClientKnownRequestError
                 && (error.code === 'P2002' || error.code === 'P2034');

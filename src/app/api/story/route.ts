@@ -12,6 +12,12 @@ import {
     StoryLimitError,
     StoryVersionConflictError,
 } from '@/lib/story-service';
+import {
+    canMemberWrite,
+    MEMBERSHIP_WITHDRAWN_CODE,
+    MEMBERSHIP_WITHDRAWN_MESSAGE,
+    MembershipWriteBlockedError,
+} from '@/lib/member-access';
 
 export async function GET() {
     const user = await getCurrentUser();
@@ -32,7 +38,11 @@ export async function GET() {
         });
 
         return jsonResponse({
-            user: { id: user.id, displayName: user.displayName },
+            user: {
+                id: user.id,
+                displayName: user.displayName,
+                membershipStatus: user.membershipStatus,
+            },
             story,
         });
     } catch (error) {
@@ -45,6 +55,12 @@ export async function POST(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
     if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    if (!canMemberWrite(user)) {
+        return jsonResponse({
+            error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+            code: MEMBERSHIP_WITHDRAWN_CODE,
+        }, 403);
+    }
 
     try {
         const rateLimit = await consumeRateLimits(storyWriteRateLimitRules(user.id));
@@ -65,6 +81,12 @@ export async function POST(request: NextRequest) {
         const result = await saveStoryVersion(user.id, input.value);
         return jsonResponse({ success: true, ...result });
     } catch (error) {
+        if (error instanceof MembershipWriteBlockedError) {
+            return jsonResponse({
+                error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+                code: MEMBERSHIP_WITHDRAWN_CODE,
+            }, 403);
+        }
         if (error instanceof StoryVersionConflictError) {
             return jsonResponse({
                 error: '別のタブで競泳物語が更新されています。最新の内容を読み込んでから編集し直してください',

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+    findNextMeetGoalId,
     getCompetitionGoalDisplayValues,
     getCompetitionGoalFieldMapping,
+    isCompetitionGoalElapsed,
+    sortCompetitionGoalsForDisplay,
 } from './competition-goal-display';
 
 test('next-meet and annual goals use details for the meet name and title for the goal', () => {
@@ -48,4 +51,34 @@ test('display values normalize missing optional text', () => {
         meetName: '',
         goalText: '楽しんで泳ぐ',
     });
+});
+
+test('display order is upcoming, undated, then recently elapsed', () => {
+    const goals = [
+        { id: 'past-old', targetDate: '2026-01-01', updatedAt: '2026-01-02T00:00:00Z' },
+        { id: 'undated-old', targetDate: null, updatedAt: '2026-07-01T00:00:00Z' },
+        { id: 'future-late', targetDate: '2026-10-01', updatedAt: '2026-07-01T00:00:00Z' },
+        { id: 'past-recent', targetDate: '2026-07-31', updatedAt: '2026-08-01T00:00:00Z' },
+        { id: 'future-near', targetDate: new Date('2026-08-02T00:00:00.000Z'), updatedAt: new Date(0) },
+        { id: 'undated-new', targetDate: null, updatedAt: '2026-08-01T00:00:00Z' },
+    ];
+
+    assert.deepEqual(
+        sortCompetitionGoalsForDisplay(goals, '2026-08-02').map((goal) => goal.id),
+        ['future-near', 'future-late', 'undated-new', 'undated-old', 'past-recent', 'past-old'],
+    );
+});
+
+test('next meet badge ignores undated, elapsed, and non-meet goals', () => {
+    const goals = [
+        { id: 'annual', type: 'ANNUAL' as const, targetDate: '2026-08-03' },
+        { id: 'undated', type: 'next_meet' as const, targetDate: null },
+        { id: 'past', type: 'NEXT_MEET' as const, targetDate: '2026-08-01' },
+        { id: 'next', type: 'next_meet' as const, targetDate: '2026-08-05' },
+        { id: 'later', type: 'NEXT_MEET' as const, targetDate: '2026-09-01' },
+    ];
+
+    assert.equal(findNextMeetGoalId(goals, '2026-08-02'), 'next');
+    assert.equal(isCompetitionGoalElapsed(goals[2]!, '2026-08-02'), true);
+    assert.equal(isCompetitionGoalElapsed(goals[3]!, '2026-08-02'), false);
 });

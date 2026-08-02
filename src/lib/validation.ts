@@ -1,12 +1,21 @@
 import { parseDailyLogDate } from './date';
+import {
+  dailyActivityFromPracticed,
+  isDailyActivityType,
+  isPracticedActivity,
+  type DailyActivityType,
+} from './daily-activity';
 import { getPasswordValidationError } from './password';
 import {
   MAX_DAILY_TEXT_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
+  MAX_GUARDIAN_NAME_LENGTH,
+  MAX_GUARDIAN_RELATIONSHIP_LENGTH,
   MAX_STORY_ANSWER_LENGTH,
   MAX_STORY_NOTE_LENGTH,
   MAX_STORY_VERSIONS,
 } from './limits';
+import { isRegistrationInviteToken } from './registration-invite';
 
 const LOGIN_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{2,63}$/u;
 const QUESTION_NUMBERS = new Set(Array.from({ length: 15 }, (_, index) => index + 1));
@@ -120,12 +129,85 @@ export function parseAccountInput(
   return success({ loginId, displayName, password });
 }
 
+export interface InviteRegistrationInput {
+  inviteToken: string;
+  loginId: string;
+  password: string;
+  guardianName: string;
+  guardianRelationship: string;
+}
+
+export function parseInviteRegistrationInput(
+  body: Record<string, unknown>,
+): ValidationResult<InviteRegistrationInput> {
+  const allowedFields = new Set([
+    'inviteToken',
+    'loginId',
+    'password',
+    'guardianName',
+    'guardianRelationship',
+    'guardianConsent',
+  ]);
+  if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+    return failure('リクエストの形式が正しくありません');
+  }
+
+  const inviteToken = body.inviteToken;
+  const loginId = normalizeRequiredString(body.loginId);
+  const password = typeof body.password === 'string' ? body.password : '';
+  const guardianName = normalizeRequiredString(body.guardianName);
+  const guardianRelationship = normalizeRequiredString(body.guardianRelationship);
+
+  if (!isRegistrationInviteToken(inviteToken)) {
+    return failure('この登録URLは利用できません。管理者へ再発行を依頼してください');
+  }
+  if (!loginId || !password || !guardianName || !guardianRelationship) {
+    return failure('ログイン情報と保護者情報を入力してください');
+  }
+  if (!LOGIN_ID_PATTERN.test(loginId)) {
+    return failure('ログインIDは3〜64文字の文字・数字・ピリオド・ハイフン・アンダースコアで入力してください');
+  }
+  if (guardianName.length > MAX_GUARDIAN_NAME_LENGTH) {
+    return failure(`保護者氏名は${MAX_GUARDIAN_NAME_LENGTH}文字以内で入力してください`);
+  }
+  if (guardianRelationship.length > MAX_GUARDIAN_RELATIONSHIP_LENGTH) {
+    return failure(`選手との関係は${MAX_GUARDIAN_RELATIONSHIP_LENGTH}文字以内で入力してください`);
+  }
+  const passwordError = getPasswordValidationError(password);
+  if (passwordError) return failure(passwordError);
+  if (body.guardianConsent !== true) {
+    return failure('登録前の内容を確認し、保護者として同意してください');
+  }
+
+  return success({
+    inviteToken,
+    loginId,
+    password,
+    guardianName,
+    guardianRelationship,
+  });
+}
+
+export function parseInviteCreateInput(
+  body: Record<string, unknown>,
+): ValidationResult<{ athleteName: string }> {
+  if (Object.keys(body).some((key) => key !== 'athleteName')) {
+    return failure('リクエストの形式が正しくありません');
+  }
+  const athleteName = normalizeRequiredString(body.athleteName);
+  if (!athleteName) return failure('選手名を入力してください');
+  if (athleteName.length > MAX_DISPLAY_NAME_LENGTH) {
+    return failure(`選手名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください`);
+  }
+  return success({ athleteName });
+}
+
 export interface DailyLogInput {
   date: string;
   logDate: Date;
   baseRevision: number | null;
   score: number;
-  practiced: boolean;
+  activityType: DailyActivityType;
   goodText: string | null;
   improveText: string | null;
   tomorrowText: string | null;
@@ -136,6 +218,7 @@ export function parseDailyLogInput(body: Record<string, unknown>): ValidationRes
     'date',
     'baseRevision',
     'score',
+    'activityType',
     'practiced',
     'goodText',
     'improveText',
@@ -165,8 +248,27 @@ export function parseDailyLogInput(body: Record<string, unknown>): ValidationRes
   if (typeof body.score !== 'number' || !Number.isInteger(body.score) || body.score < 1 || body.score > 10) {
     return failure('点数は1〜10の整数で入力してください');
   }
-  if (typeof body.practiced !== 'boolean') {
+  const hasActivityType = Object.prototype.hasOwnProperty.call(body, 'activityType');
+  const hasPracticed = Object.prototype.hasOwnProperty.call(body, 'practiced');
+  if (hasActivityType && !isDailyActivityType(body.activityType)) {
+    return failure('練習・大会・お休みの区分を正しく入力してください');
+  }
+  if (hasPracticed && typeof body.practiced !== 'boolean') {
     return failure('練習の有無を正しく入力してください');
+  }
+  if (!hasActivityType && !hasPracticed) {
+    return failure('練習・大会・お休みの区分を選んでください');
+  }
+
+  const activityType = hasActivityType
+    ? body.activityType as DailyActivityType
+    : dailyActivityFromPracticed(body.practiced as boolean);
+  if (
+    hasActivityType
+    && hasPracticed
+    && body.practiced !== isPracticedActivity(activityType)
+  ) {
+    return failure('練習の記録が一致していません');
   }
 
   const goodText = readOptionalText(body.goodText, '良かったこと', MAX_DAILY_TEXT_LENGTH);
@@ -181,7 +283,7 @@ export function parseDailyLogInput(body: Record<string, unknown>): ValidationRes
     logDate,
     baseRevision,
     score: body.score,
-    practiced: body.practiced,
+    activityType,
     goodText: goodText.value,
     improveText: improveText.value,
     tomorrowText: tomorrowText.value,

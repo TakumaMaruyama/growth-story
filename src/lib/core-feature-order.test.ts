@@ -39,7 +39,11 @@ test('home actions, summaries and sections use the canonical feature order', asy
     const hero = source.slice(source.indexOf('<section className="card hero"'), source.indexOf('</section>', source.indexOf('<section className="card hero"')));
     const summaries = source.slice(source.indexOf('aria-label="記録のサマリー"'), source.indexOf('</section>', source.indexOf('aria-label="記録のサマリー"')));
 
-    assertOrdered(hero, ['href={`/daily?date=${today}`}', 'href="/goals"', 'href="/story/edit"'], 'home actions');
+    assertOrdered(hero, [
+        'href={`/daily?date=${today}`}',
+        "href={isReadOnly ? '/goals' : '/goals?add=1'}",
+        "href={isReadOnly ? '/story' : '/story/edit'}",
+    ], 'home actions');
     assertOrdered(summaries, ['練習日誌の記録', '設定中の大会目標', '競泳物語の更新'], 'home summaries');
     assertOrdered(source, ['aria-labelledby="today-heading"', 'aria-labelledby="goals-heading"', 'aria-labelledby="story-heading"'], 'home sections');
 });

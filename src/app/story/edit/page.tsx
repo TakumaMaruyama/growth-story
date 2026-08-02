@@ -22,6 +22,7 @@ import type { StoryQuestionNo } from '@/lib/story-questions';
 interface UserInfo {
     id: string;
     displayName: string;
+    membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
 interface StoryFormState {
@@ -135,13 +136,15 @@ export default function StoryEditPage() {
     const [versionConflict, setVersionConflict] = useState<VersionConflict | null>(null);
     const [reloadToken, setReloadToken] = useState(0);
     const draftBaseVersionRef = useRef<number | null>(null);
+    const isReadOnly = user?.membershipStatus === 'WITHDRAWN';
 
     const fingerprint = useMemo(
         () => JSON.stringify({ answers, note }),
         [answers, note],
     );
     const baseline = useMemo(() => JSON.stringify(serverState), [serverState]);
-    const hasChanges = !loading && user !== null && fingerprint !== baseline;
+    const hasLocalChanges = !loading && user !== null && fingerprint !== baseline;
+    const hasChanges = !isReadOnly && hasLocalChanges;
     const oversizedQuestions = useMemo(
         () => STORY_QUESTIONS
             .filter((question) => (answers[question.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH)
@@ -153,7 +156,7 @@ export default function StoryEditPage() {
     const answeredQuestionCount = useMemo(() => countAnsweredStoryQuestions(answers), [answers]);
     const activeQuestionIndex = STORY_QUESTIONS.findIndex((question) => question.no === activeQuestionNo);
     const activeQuestion = STORY_QUESTIONS[activeQuestionIndex] ?? STORY_QUESTIONS[0];
-    const confirmPageExit = useUnsavedChangesWarning(hasChanges);
+    const confirmPageExit = useUnsavedChangesWarning(hasLocalChanges);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -194,11 +197,13 @@ export default function StoryEditPage() {
                 const serverVersion = data.story?.version ?? null;
                 const nextServerState = { answers: serverAnswers, note: '' };
                 const saved = readDraft(draftKey(data.user.id));
-                const initialState = saved.draft ?? nextServerState;
+                const readOnly = data.user.membershipStatus === 'WITHDRAWN';
+                const initialState = readOnly ? nextServerState : saved.draft ?? nextServerState;
                 const requestedQuestion = new URLSearchParams(window.location.search).get('question');
                 const initialQuestionNo = resolveInitialStoryQuestionNo(requestedQuestion, initialState.answers);
                 const hasStaleDraft = Boolean(
-                    saved.draft
+                    !readOnly
+                    && saved.draft
                     && saved.draft.baseVersion !== serverVersion,
                 );
 
@@ -228,7 +233,7 @@ export default function StoryEditPage() {
     }, [reloadToken, router]);
 
     useEffect(() => {
-        if (!user || loading) return;
+        if (!user || user.membershipStatus === 'WITHDRAWN' || loading) return;
         const key = draftKey(user.id);
         const available = hasChanges
             ? writeDraft(key, { baseVersion: draftBaseVersionRef.current, answers, note })
@@ -269,6 +274,10 @@ export default function StoryEditPage() {
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (isReadOnly) {
+            setSaveError('退会中のため、新規入力や更新はできません。');
+            return;
+        }
         if (!hasChanges || versionConflict) return;
         if (hasOversizedAnswers) {
             setSaveError('文字数を超えている回答を短くしてから保存してください');
@@ -293,6 +302,12 @@ export default function StoryEditPage() {
             const apiError = parseApiError(raw);
             if (response.status === 401) {
                 router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
+                return;
+            }
+            if (response.status === 403 && apiError.code === 'MEMBERSHIP_WITHDRAWN') {
+                setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
+                setVersionConflict(null);
+                setSaveError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
                 return;
             }
             if (response.status === 403) {
@@ -342,6 +357,11 @@ export default function StoryEditPage() {
                     </div>
                 ) : (
                     <form onSubmit={handleSubmit}>
+                        {isReadOnly && (
+                            <div className="alert alert-warning" role="status">
+                                退会中のため、競泳物語は閲覧のみです。利用再開は管理者へご連絡ください。
+                            </div>
+                        )}
                         {currentVersion !== null && (
                             <div className="alert alert-info">
                                 現在は Ver.{currentVersion} です。
@@ -465,6 +485,7 @@ export default function StoryEditPage() {
                                 placeholder="自由に書いてください"
                                 maxLength={MAX_STORY_ANSWER_LENGTH}
                                 disabled={saving}
+                                readOnly={isReadOnly}
                                 aria-label={`Q${activeQuestion.no}の回答`}
                                 aria-invalid={(answers[activeQuestion.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH}
                                 aria-describedby={`q${activeQuestion.no}-count`}
@@ -477,7 +498,7 @@ export default function StoryEditPage() {
                             </p>
                         </section>
 
-                        <section className="card" aria-labelledby="note-heading">
+                        {!isReadOnly && <section className="card" aria-labelledby="note-heading">
                             <h2 id="note-heading" className="section-title">今回の保存メモ</h2>
                             <label htmlFor="note" className="form-label">変更のきっかけ（任意）</label>
                             <input
@@ -494,9 +515,9 @@ export default function StoryEditPage() {
                                 disabled={saving}
                             />
                             <p className="form-help">{note.length.toLocaleString('ja-JP')} / {MAX_STORY_NOTE_LENGTH.toLocaleString('ja-JP')}文字</p>
-                        </section>
+                        </section>}
 
-                        <div className="sticky-actions">
+                        {!isReadOnly && <div className="sticky-actions">
                             <div aria-live="polite">
                                 {hasChanges ? (
                                     <span className="muted">
@@ -526,7 +547,7 @@ export default function StoryEditPage() {
                                     {saving ? '保存中…' : '更新内容を保存'}
                                 </button>
                             </div>
-                        </div>
+                        </div>}
                     </form>
                 )}
             </main>

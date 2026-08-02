@@ -10,6 +10,12 @@ import {
     DailyLogConflictError,
     saveDailyLog,
 } from '@/lib/daily-log-service';
+import {
+    canMemberWrite,
+    MEMBERSHIP_WITHDRAWN_CODE,
+    MEMBERSHIP_WITHDRAWN_MESSAGE,
+    MembershipWriteBlockedError,
+} from '@/lib/member-access';
 
 export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
@@ -28,6 +34,7 @@ export async function GET(request: NextRequest) {
                 where: { userId_logDate: { userId: user.id, logDate } },
                 select: {
                     score: true,
+                    activityType: true,
                     practiced: true,
                     goodText: true,
                     improveText: true,
@@ -52,7 +59,11 @@ export async function GET(request: NextRequest) {
         ]);
 
         return jsonResponse({
-            user: { id: user.id, displayName: user.displayName },
+            user: {
+                id: user.id,
+                displayName: user.displayName,
+                membershipStatus: user.membershipStatus,
+            },
             date,
             today,
             log,
@@ -69,6 +80,12 @@ export async function POST(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
     if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
+    if (!canMemberWrite(user)) {
+        return jsonResponse({
+            error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+            code: MEMBERSHIP_WITHDRAWN_CODE,
+        }, 403);
+    }
 
     try {
         const writeRule: RateLimitRule = {
@@ -103,6 +120,12 @@ export async function POST(request: NextRequest) {
             eligibleRecordCount,
         });
     } catch (error) {
+        if (error instanceof MembershipWriteBlockedError) {
+            return jsonResponse({
+                error: MEMBERSHIP_WITHDRAWN_MESSAGE,
+                code: MEMBERSHIP_WITHDRAWN_CODE,
+            }, 403);
+        }
         if (error instanceof DailyLogConflictError) {
             return jsonResponse(
                 { error: '別の画面で日誌が更新されました。再読み込みして内容を確認してください' },

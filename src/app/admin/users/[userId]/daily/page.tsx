@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Nav from '@/components/Nav';
+import { getDailyActivityLabel, type DailyActivityType } from '@/lib/daily-activity';
 import { loginHref } from '@/lib/return-path';
 
 interface Props {
@@ -18,7 +19,7 @@ interface DailyLogItem {
     id: string;
     logDate: string;
     score: number;
-    practiced: boolean;
+    activityType: DailyActivityType;
 }
 
 export default function AdminUserDailyPage({ params }: Props) {
@@ -183,7 +184,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                                     <tr>
                                         <th scope="col">日付</th>
                                         <th scope="col">自己評価</th>
-                                        <th scope="col">練習</th>
+                                        <th scope="col">区分</th>
                                         <th scope="col">操作</th>
                                     </tr>
                                 </thead>
@@ -192,7 +193,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                                         <tr key={log.id}>
                                             <td>{formatDate(log.logDate)}</td>
                                             <td>{log.score}/10</td>
-                                            <td>{log.practiced ? 'あり' : 'なし'}</td>
+                                            <td>{getDailyActivityLabel(log.activityType)}</td>
                                             <td>
                                                 <Link
                                                     href={`/admin/users/${userId}/daily/${log.logDate.slice(0, 10)}`}

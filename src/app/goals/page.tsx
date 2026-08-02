@@ -9,17 +9,17 @@ import { ClockCountdownIcon } from '@phosphor-icons/react/dist/csr/ClockCountdow
 import { FlagCheckeredIcon } from '@phosphor-icons/react/dist/csr/FlagCheckered';
 import { FloppyDiskIcon } from '@phosphor-icons/react/dist/csr/FloppyDisk';
 import { PlusIcon } from '@phosphor-icons/react/dist/csr/Plus';
-import { TargetIcon } from '@phosphor-icons/react/dist/csr/Target';
 import { TrashIcon } from '@phosphor-icons/react/dist/csr/Trash';
-import { TrophyIcon } from '@phosphor-icons/react/dist/csr/Trophy';
 import Nav from '@/components/Nav';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
 import {
+    findNextMeetGoalId,
     getCompetitionGoalDisplayValues,
     getCompetitionGoalFieldMapping,
+    isCompetitionGoalElapsed,
+    sortCompetitionGoalsForDisplay,
 } from '@/lib/competition-goal-display';
 import {
-    MAX_ACTIVE_MILESTONE_GOALS,
     MAX_GOAL_DETAILS_LENGTH,
     MAX_GOAL_TITLE_LENGTH,
 } from '@/lib/limits';
@@ -27,11 +27,13 @@ import { loginHref } from '@/lib/return-path';
 import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
 
 type GoalType = 'next_meet' | 'annual' | 'milestone';
+type GoalFilter = 'all' | GoalType;
 type EditableGoalField = 'title' | 'details' | 'targetDate';
 
 interface UserInfo {
     id: string;
     displayName: string;
+    membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
 interface GoalApi {
@@ -57,10 +59,9 @@ interface GoalForm {
 }
 
 interface GoalFormState {
-    nextMeet: GoalForm;
-    annual: GoalForm;
-    milestones: GoalForm[];
-    newMilestone: GoalForm;
+    goals: GoalForm[];
+    newGoal: GoalForm;
+    queuedGoals: GoalForm[];
 }
 
 function currentJSTYear(): number {
@@ -83,10 +84,9 @@ function emptyGoal(type: GoalType): GoalForm {
 
 function emptyState(): GoalFormState {
     return {
-        nextMeet: emptyGoal('next_meet'),
-        annual: emptyGoal('annual'),
-        milestones: [],
-        newMilestone: emptyGoal('milestone'),
+        goals: [],
+        newGoal: emptyGoal('next_meet'),
+        queuedGoals: [],
     };
 }
 
@@ -165,30 +165,56 @@ function parseGoalDraft(value: string): GoalFormState | null {
         const draft: unknown = JSON.parse(value);
         if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return null;
         const record = draft as Record<string, unknown>;
-        if (
-            !Array.isArray(record.milestones)
-            || record.milestones.length > MAX_ACTIVE_MILESTONE_GOALS
-        ) return null;
-
-        const nextMeet = parseGoalForm(record.nextMeet, 'next_meet');
-        const annual = parseGoalForm(record.annual, 'annual');
-        const newMilestone = parseGoalForm(record.newMilestone, 'milestone');
-        const milestones = record.milestones.map((goal) => parseGoalForm(goal, 'milestone'));
-        if (
-            !nextMeet
-            || !annual
-            || !newMilestone
-            || newMilestone.id !== null
-            || milestones.some((goal) => goal === null || goal.id === null)
-        ) {
-            return null;
+        if (Array.isArray(record.goals)) {
+            const goals = record.goals.map((goal) => {
+                if (!goal || typeof goal !== 'object' || Array.isArray(goal)) return null;
+                const type = (goal as Record<string, unknown>).type;
+                return isGoalType(type) ? parseGoalForm(goal, type) : null;
+            });
+            if (goals.some((goal) => goal === null || goal.id === null)) return null;
+            if (!record.newGoal || typeof record.newGoal !== 'object') return null;
+            const newGoalType = (record.newGoal as Record<string, unknown>).type;
+            const newGoal = isGoalType(newGoalType)
+                ? parseGoalForm(record.newGoal, newGoalType)
+                : null;
+            if (!newGoal || newGoal.id !== null) return null;
+            const queuedValues = record.queuedGoals === undefined ? [] : record.queuedGoals;
+            if (!Array.isArray(queuedValues) || queuedValues.length > 3) return null;
+            const queuedGoals = queuedValues.map((goal) => {
+                if (!goal || typeof goal !== 'object' || Array.isArray(goal)) return null;
+                const type = (goal as Record<string, unknown>).type;
+                return isGoalType(type) ? parseGoalForm(goal, type) : null;
+            });
+            if (queuedGoals.some((goal) => goal === null || goal.id !== null)) return null;
+            return {
+                goals: goals as GoalForm[],
+                newGoal,
+                queuedGoals: queuedGoals as GoalForm[],
+            };
         }
 
+        if (!Array.isArray(record.milestones)) return null;
+        const legacyNextMeet = parseGoalForm(record.nextMeet, 'next_meet');
+        const legacyAnnual = parseGoalForm(record.annual, 'annual');
+        const legacyNewMilestone = parseGoalForm(record.newMilestone, 'milestone');
+        const legacyMilestones = record.milestones.map((goal) => parseGoalForm(goal, 'milestone'));
+        if (
+            !legacyNextMeet
+            || !legacyAnnual
+            || !legacyNewMilestone
+            || legacyMilestones.some((goal) => goal === null || goal.id === null)
+        ) return null;
+
+        const savedGoals = [legacyNextMeet, legacyAnnual, ...legacyMilestones as GoalForm[]]
+            .filter((goal): goal is GoalForm & { id: string } => goal.id !== null);
+        const unsavedCandidates = [legacyNextMeet, legacyAnnual, legacyNewMilestone]
+            .filter((goal) => goal.id === null)
+            .filter(goalHasUserInput);
+
         return {
-            nextMeet,
-            annual,
-            newMilestone,
-            milestones: milestones as GoalForm[],
+            goals: sortGoalsByDate(savedGoals),
+            newGoal: unsavedCandidates[0] ?? emptyGoal('next_meet'),
+            queuedGoals: unsavedCandidates.slice(1),
         };
     } catch {
         return null;
@@ -203,25 +229,45 @@ function goalFormsEqual(left: GoalForm, right: GoalForm): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function goalHasUserInput(goal: GoalForm): boolean {
+    return Boolean(
+        goal.title.trim()
+        || goal.details.trim()
+        || (goal.type !== 'annual' && goal.targetDate),
+    );
+}
+
 function draftKey(userId: string): string {
     return `swim-story:draft:goals:${userId}`;
 }
 
-function sortMilestones(goals: GoalForm[]): GoalForm[] {
-    return [...goals].sort((left, right) => {
-        if (!left.targetDate) return 1;
-        if (!right.targetDate) return -1;
-        return left.targetDate.localeCompare(right.targetDate);
-    });
+function sortGoalsByDate(goals: GoalForm[]): GoalForm[] {
+    return sortCompetitionGoalsForDisplay(goals, currentJSTDate());
 }
 
 const GOAL_TYPE_LABELS: Record<GoalType, string> = {
-    next_meet: '次の大会',
-    annual: '年間目標',
-    milestone: '期限つき目標',
+    next_meet: '大会',
+    annual: '年間',
+    milestone: '出場目標',
 };
 
-function formatGoalTarget(goal: GoalApi): string | null {
+const GOAL_FILTER_LABELS: Record<GoalFilter, string> = {
+    all: 'すべて',
+    ...GOAL_TYPE_LABELS,
+};
+
+function currentJSTDate(): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatGoalTarget(goal: { type: GoalType; targetDate: string | null }): string | null {
     if (!goal.targetDate) return null;
     if (goal.type === 'annual') return `${goal.targetDate.slice(0, 4)}年`;
     const formatted = goal.targetDate.replaceAll('-', '.');
@@ -234,36 +280,27 @@ function mergeGoalDraft(
 ): { state: GoalFormState; skippedStaleDraft: boolean } {
     let skippedStaleDraft = false;
 
-    const mergeSingleton = (serverGoal: GoalForm, draftGoal: GoalForm): GoalForm => {
-        if (serverGoal.id === null && draftGoal.id === null) return draftGoal;
-        if (serverGoal.id === draftGoal.id && serverGoal.revision === draftGoal.revision) {
-            return draftGoal;
-        }
-        skippedStaleDraft = true;
-        return serverGoal;
-    };
-
-    const draftMilestones = new Map(
-        draft.milestones
+    const draftById = new Map(
+        draft.goals
             .filter((goal): goal is GoalForm & { id: string } => goal.id !== null)
             .map((goal) => [goal.id, goal]),
     );
-    const milestones = server.milestones.map((serverGoal) => {
-        const draftGoal = serverGoal.id ? draftMilestones.get(serverGoal.id) : undefined;
+    const goals = server.goals.map((serverGoal) => {
+        const draftGoal = serverGoal.id ? draftById.get(serverGoal.id) : undefined;
         if (!draftGoal) return serverGoal;
-        draftMilestones.delete(draftGoal.id);
+        draftById.delete(draftGoal.id);
         if (draftGoal.revision === serverGoal.revision) return draftGoal;
         skippedStaleDraft = true;
         return serverGoal;
     });
-    if (draftMilestones.size > 0) skippedStaleDraft = true;
+    if (draftById.size > 0) skippedStaleDraft = true;
 
+    const pendingGoals = [draft.newGoal, ...draft.queuedGoals].filter(goalHasUserInput);
     return {
         state: {
-            nextMeet: mergeSingleton(server.nextMeet, draft.nextMeet),
-            annual: mergeSingleton(server.annual, draft.annual),
-            milestones,
-            newMilestone: draft.newMilestone,
+            goals,
+            newGoal: pendingGoals[0] ?? emptyGoal('next_meet'),
+            queuedGoals: pendingGoals.slice(1),
         },
         skippedStaleDraft,
     };
@@ -412,6 +449,8 @@ export default function GoalsPage() {
     const [loading, setLoading] = useState(true);
     const [savingKey, setSavingKey] = useState<string | null>(null);
     const [deletingKey, setDeletingKey] = useState<string | null>(null);
+    const [editingKey, setEditingKey] = useState<string | null>(null);
+    const [goalFilter, setGoalFilter] = useState<GoalFilter>('all');
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [conflict, setConflict] = useState(false);
@@ -420,10 +459,11 @@ export default function GoalsPage() {
     const [draftStorageAvailable, setDraftStorageAvailable] = useState(true);
     const [reloadToken, setReloadToken] = useState(0);
     const discardDraftOnReloadRef = useRef(false);
-    const dirty = loaded && goalStateKey(forms) !== goalStateKey(baselineForms);
-    const nextMeetChanged = !goalFormsEqual(forms.nextMeet, baselineForms.nextMeet);
-    const annualChanged = !goalFormsEqual(forms.annual, baselineForms.annual);
-    const confirmPageExit = useUnsavedChangesWarning(dirty);
+    const addRequestHandledRef = useRef(false);
+    const isReadOnly = user?.membershipStatus === 'WITHDRAWN';
+    const hasLocalChanges = loaded && goalStateKey(forms) !== goalStateKey(baselineForms);
+    const dirty = !isReadOnly && hasLocalChanges;
+    const confirmPageExit = useUnsavedChangesWarning(hasLocalChanges);
     const busy = savingKey !== null || deletingKey !== null;
 
     useEffect(() => {
@@ -458,6 +498,7 @@ export default function GoalsPage() {
                     || !data?.user
                     || typeof data.user.id !== 'string'
                     || typeof data.user.displayName !== 'string'
+                    || (data.user.membershipStatus !== 'ACTIVE' && data.user.membershipStatus !== 'WITHDRAWN')
                     || !Array.isArray(data.goals)
                     || !Array.isArray(data.archivedGoals)
                 ) {
@@ -476,19 +517,11 @@ export default function GoalsPage() {
                 }
 
                 const validGoals = goals as GoalApi[];
-                const nextMeet = validGoals.find((goal) => goal.type === 'next_meet');
-                const annual = validGoals.find((goal) => goal.type === 'annual');
+                const readOnly = data.user.membershipStatus === 'WITHDRAWN';
                 const nextState: GoalFormState = {
-                    nextMeet: nextMeet
-                        ? goalToForm(nextMeet)
-                        : emptyGoal('next_meet'),
-                    annual: annual
-                        ? goalToForm(annual)
-                        : emptyGoal('annual'),
-                    milestones: sortMilestones(
-                        validGoals.filter((goal) => goal.type === 'milestone').map(goalToForm),
-                    ),
-                    newMilestone: emptyGoal('milestone'),
+                    goals: sortGoalsByDate(validGoals.map(goalToForm)),
+                    newGoal: emptyGoal('next_meet'),
+                    queuedGoals: [],
                 };
                 setBaselineForms(nextState);
 
@@ -498,16 +531,26 @@ export default function GoalsPage() {
                     discardDraftOnReloadRef.current = false;
                 }
                 const savedDraft = readTabDraft(key);
-                const restored = savedDraft.value ? parseGoalDraft(savedDraft.value) : null;
-                if (savedDraft.value && !restored) removeTabDraft(key);
+                const restored = !readOnly && savedDraft.value ? parseGoalDraft(savedDraft.value) : null;
+                if (!readOnly && savedDraft.value && !restored) removeTabDraft(key);
                 const mergedDraft = restored ? mergeGoalDraft(nextState, restored) : null;
+                const loadedState = mergedDraft?.state ?? nextState;
+                const firstChangedGoal = loadedState.goals.find((goal) => {
+                    const serverGoal = nextState.goals.find((item) => item.id === goal.id);
+                    return serverGoal && !goalFormsEqual(goal, serverGoal);
+                });
 
                 setUser(data.user);
                 setArchivedGoals(archived as GoalApi[]);
-                setForms(mergedDraft?.state ?? nextState);
+                setForms(loadedState);
+                setEditingKey(readOnly
+                    ? null
+                    : goalHasUserInput(loadedState.newGoal)
+                        ? 'new'
+                        : firstChangedGoal?.id ?? null);
                 setDraftRestored(Boolean(
                     mergedDraft
-                    && goalStateKey(mergedDraft.state) !== goalStateKey(nextState)
+                    && goalStateKey(loadedState) !== goalStateKey(nextState)
                 ));
                 setStaleDraftSkipped(Boolean(mergedDraft?.skippedStaleDraft));
                 setDraftStorageAvailable(savedDraft.durable);
@@ -525,13 +568,31 @@ export default function GoalsPage() {
     }, [reloadToken, router]);
 
     useEffect(() => {
-        if (!loaded || !user) return;
+        if (!loaded || !user || isReadOnly) return;
         const available = dirty
             ? writeTabDraft(draftKey(user.id), JSON.stringify(forms))
             : removeTabDraft(draftKey(user.id));
         const timeout = window.setTimeout(() => setDraftStorageAvailable(available), 0);
         return () => window.clearTimeout(timeout);
-    }, [dirty, forms, loaded, user]);
+    }, [dirty, forms, isReadOnly, loaded, user]);
+
+    useEffect(() => {
+        if (
+            !loaded
+            || addRequestHandledRef.current
+            || new URLSearchParams(window.location.search).get('add') !== '1'
+        ) return;
+        addRequestHandledRef.current = true;
+        router.replace('/goals', { scroll: false });
+        if (isReadOnly) return;
+        const frame = window.requestAnimationFrame(() => {
+            setEditingKey('new');
+            window.requestAnimationFrame(() => {
+                document.getElementById('new-goal-meet-name')?.focus();
+            });
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [isReadOnly, loaded, router]);
 
     const clearFeedback = () => {
         setMessage('');
@@ -541,40 +602,49 @@ export default function GoalsPage() {
         setStaleDraftSkipped(false);
     };
 
-    const updateSingleton = (
-        type: 'next_meet' | 'annual',
+    const updateSavedGoal = (
+        id: string,
         field: EditableGoalField,
         value: string,
     ) => {
         clearFeedback();
         setForms((current) => ({
             ...current,
-            [type === 'next_meet' ? 'nextMeet' : 'annual']: {
-                ...current[type === 'next_meet' ? 'nextMeet' : 'annual'],
-                [field]: value,
-            },
-        }));
-    };
-
-    const updateMilestone = (id: string, field: EditableGoalField, value: string) => {
-        clearFeedback();
-        setForms((current) => ({
-            ...current,
-            milestones: current.milestones.map((goal) => goal.id === id
+            goals: current.goals.map((goal) => goal.id === id
                 ? { ...goal, [field]: value }
                 : goal),
         }));
     };
 
-    const updateNewMilestone = (field: EditableGoalField, value: string) => {
+    const updateNewGoal = (field: EditableGoalField, value: string) => {
         clearFeedback();
         setForms((current) => ({
             ...current,
-            newMilestone: { ...current.newMilestone, [field]: value },
+            newGoal: { ...current.newGoal, [field]: value },
+        }));
+    };
+
+    const updateNewGoalType = (type: GoalType) => {
+        clearFeedback();
+        setForms((current) => ({
+            ...current,
+            newGoal: {
+                ...current.newGoal,
+                type,
+                targetDate: type === 'annual'
+                    ? `${currentJSTYear()}-12-31`
+                    : current.newGoal.type === 'annual'
+                        ? ''
+                        : current.newGoal.targetDate,
+            },
         }));
     };
 
     const saveGoal = async (goal: GoalForm, key: string) => {
+        if (isReadOnly) {
+            setError('退会中のため、大会目標の新規入力や更新はできません。');
+            return;
+        }
         const title = goal.title.trim();
         const details = goal.details.trim();
         if (!title) {
@@ -622,11 +692,14 @@ export default function GoalsPage() {
                 return;
             }
             if (response.status === 409) {
-                setConflict(
-                    data?.code === 'GOAL_VERSION_CONFLICT'
-                    || data?.code === 'GOAL_SINGLETON_CONFLICT',
-                );
+                setConflict(data?.code === 'GOAL_VERSION_CONFLICT');
                 setError(data?.error ?? '別の画面でこの目標が更新されました');
+                return;
+            }
+            if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
+                setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
+                setEditingKey(null);
+                setError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
                 return;
             }
             if (!response.ok) {
@@ -640,39 +713,35 @@ export default function GoalsPage() {
                 return;
             }
             const saved = goalToForm(parsedGoal);
-
-            if (goal.type === 'next_meet') {
-                setBaselineForms((current) => ({ ...current, nextMeet: saved }));
-                setForms((current) => ({ ...current, nextMeet: saved }));
-            } else if (goal.type === 'annual') {
-                setBaselineForms((current) => ({ ...current, annual: saved }));
-                setForms((current) => ({ ...current, annual: saved }));
-            } else if (creating) {
-                setBaselineForms((current) => ({
-                    ...current,
-                    milestones: sortMilestones([...current.milestones, saved]),
-                    newMilestone: emptyGoal('milestone'),
-                }));
-                setForms((current) => ({
-                    ...current,
-                    milestones: sortMilestones([...current.milestones, saved]),
-                    newMilestone: emptyGoal('milestone'),
-                }));
-            } else {
-                setBaselineForms((current) => ({
-                    ...current,
-                    milestones: sortMilestones(current.milestones.map((item) => (
-                        item.id === saved.id ? saved : item
-                    ))),
-                }));
-                setForms((current) => ({
-                    ...current,
-                    milestones: sortMilestones(current.milestones.map((item) => (
-                        item.id === saved.id ? saved : item
-                    ))),
-                }));
+            const applySavedGoals = (current: GoalFormState): GoalForm[] => sortGoalsByDate(creating
+                ? [...current.goals, saved]
+                : current.goals.map((item) => item.id === saved.id ? saved : item));
+            setBaselineForms((current) => ({
+                goals: applySavedGoals(current),
+                newGoal: emptyGoal('next_meet'),
+                queuedGoals: [],
+            }));
+            setForms((current) => ({
+                goals: applySavedGoals(current),
+                newGoal: creating
+                    ? current.queuedGoals[0] ?? emptyGoal('next_meet')
+                    : current.newGoal,
+                queuedGoals: creating ? current.queuedGoals.slice(1) : current.queuedGoals,
+            }));
+            const hasNextRestoredDraft = creating && forms.queuedGoals.length > 0;
+            setEditingKey(hasNextRestoredDraft ? 'new' : null);
+            if (!hasNextRestoredDraft) {
+                setDraftRestored(false);
+                setStaleDraftSkipped(false);
             }
-            setMessage(goal.type === 'milestone' ? '大会への目標を保存しました' : '目標を保存しました');
+            window.requestAnimationFrame(() => {
+                document.getElementById(hasNextRestoredDraft
+                    ? 'new-goal-meet-name'
+                    : `goal-edit-${saved.id}`)?.focus();
+            });
+            setMessage(hasNextRestoredDraft
+                ? '大会目標を保存しました。次の復元下書きを表示しています'
+                : '大会目標を保存しました');
         } catch {
             setError('通信を確認して、もう一度お試しください');
         } finally {
@@ -681,12 +750,12 @@ export default function GoalsPage() {
     };
 
     const archiveGoal = async (goal: GoalForm, key: string) => {
+        if (isReadOnly) {
+            setError('退会中のため、大会目標の新規入力や更新はできません。');
+            return;
+        }
         if (!goal.id || goal.revision === null) return;
-        const baselineGoal = goal.type === 'next_meet'
-            ? baselineForms.nextMeet
-            : goal.type === 'annual'
-                ? baselineForms.annual
-                : baselineForms.milestones.find((item) => item.id === goal.id);
+        const baselineGoal = baselineForms.goals.find((item) => item.id === goal.id);
         const hasUnsavedChanges = Boolean(
             baselineGoal && !goalFormsEqual(goal, baselineGoal),
         );
@@ -706,6 +775,7 @@ export default function GoalsPage() {
                 body: JSON.stringify({ baseRevision: goal.revision }),
             });
             const data = await response.json().catch(() => null) as {
+                code?: string;
                 error?: string;
                 goal?: unknown;
             } | null;
@@ -719,6 +789,12 @@ export default function GoalsPage() {
                 setError(data?.error ?? '別の画面でこの目標が更新されました');
                 return;
             }
+            if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
+                setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
+                setEditingKey(null);
+                setError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
+                return;
+            }
             if (!response.ok) {
                 setError(data?.error ?? '目標を過去の目標に移せませんでした');
                 return;
@@ -730,24 +806,15 @@ export default function GoalsPage() {
                 return;
             }
 
-            if (goal.type === 'next_meet') {
-                const blank = emptyGoal('next_meet');
-                setBaselineForms((current) => ({ ...current, nextMeet: blank }));
-                setForms((current) => ({ ...current, nextMeet: blank }));
-            } else if (goal.type === 'annual') {
-                const blank = emptyGoal('annual');
-                setBaselineForms((current) => ({ ...current, annual: blank }));
-                setForms((current) => ({ ...current, annual: blank }));
-            } else {
-                setBaselineForms((current) => ({
-                    ...current,
-                    milestones: current.milestones.filter((item) => item.id !== goal.id),
-                }));
-                setForms((current) => ({
-                    ...current,
-                    milestones: current.milestones.filter((item) => item.id !== goal.id),
-                }));
-            }
+            setBaselineForms((current) => ({
+                ...current,
+                goals: current.goals.filter((item) => item.id !== goal.id),
+            }));
+            setForms((current) => ({
+                ...current,
+                goals: current.goals.filter((item) => item.id !== goal.id),
+            }));
+            setEditingKey(null);
             setArchivedGoals((current) => [
                 archivedGoal,
                 ...current.filter((item) => item.id !== archivedGoal.id),
@@ -761,6 +828,10 @@ export default function GoalsPage() {
     };
 
     const deleteArchivedGoal = async (goal: GoalApi) => {
+        if (isReadOnly) {
+            setError('退会中のため、大会目標の新規入力や更新はできません。');
+            return;
+        }
         const key = `archived-${goal.id}`;
         if (!window.confirm('この過去の目標を完全に削除します。元に戻せません。削除しますか？')) {
             return;
@@ -790,6 +861,12 @@ export default function GoalsPage() {
                 setError(data?.error ?? '別の画面でこの目標が更新されました');
                 return;
             }
+            if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
+                setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
+                setEditingKey(null);
+                setError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
+                return;
+            }
             if (!response.ok) {
                 setError(data?.error ?? '過去の目標を削除できませんでした');
                 return;
@@ -811,6 +888,51 @@ export default function GoalsPage() {
         setLoaded(false);
         setReloadToken((value) => value + 1);
     };
+
+    const openNewGoal = () => {
+        if (isReadOnly) return;
+        clearFeedback();
+        setGoalFilter('all');
+        setEditingKey('new');
+        window.requestAnimationFrame(() => {
+            document.getElementById('new-goal-meet-name')?.focus();
+        });
+    };
+
+    const cancelNewGoal = () => {
+        const blank = emptyGoal('next_meet');
+        if (goalHasUserInput(forms.newGoal) && !window.confirm('入力中の新しい目標を破棄しますか？')) {
+            return;
+        }
+        clearFeedback();
+        const hasNextRestoredDraft = forms.queuedGoals.length > 0;
+        setForms((current) => ({
+            ...current,
+            newGoal: current.queuedGoals[0] ?? blank,
+            queuedGoals: current.queuedGoals.slice(1),
+        }));
+        setBaselineForms((current) => ({
+            ...current,
+            newGoal: blank,
+            queuedGoals: [],
+        }));
+        setEditingKey(hasNextRestoredDraft ? 'new' : null);
+        if (hasNextRestoredDraft) {
+            setMessage('次の復元下書きを表示しています');
+            window.requestAnimationFrame(() => {
+                document.getElementById('new-goal-meet-name')?.focus();
+            });
+        }
+    };
+
+    const today = currentJSTDate();
+    const nextUpcomingGoalId = findNextMeetGoalId(
+        forms.goals.filter((goal): goal is GoalForm & { id: string } => goal.id !== null),
+        today,
+    );
+    const filteredGoals = goalFilter === 'all'
+        ? forms.goals
+        : forms.goals.filter((goal) => goal.type === goalFilter);
 
     if (loading && !loaded) {
         return (
@@ -844,10 +966,34 @@ export default function GoalsPage() {
             <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-narrow goals-page">
                 <header className="goals-page-header">
-                    <p className="eyebrow">Race goals</p>
-                    <h1 className="page-title">大会の目標</h1>
-                    <p className="muted">次の一歩から、いつか立ちたい舞台まで。今の目標を言葉にしておこう。</p>
+                    <div className="goals-page-title-row">
+                        <div>
+                            <p className="eyebrow">Race goals</p>
+                            <h1 className="page-title">大会目標</h1>
+                            <p className="goals-active-count">設定中 {forms.goals.length}件</p>
+                        </div>
+                        {!isReadOnly && (
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={editingKey === 'new' ? cancelNewGoal : openNewGoal}
+                                disabled={busy}
+                                aria-expanded={editingKey === 'new'}
+                                aria-controls="new-goal-form"
+                            >
+                                <PlusIcon aria-hidden="true" size={20} weight="bold" />
+                                {editingKey === 'new' ? '追加を閉じる' : '目標を追加'}
+                            </button>
+                        )}
+                    </div>
+                    <p className="muted">大会ごとにいくつでも追加して、日付の近い目標から確認できます。</p>
                 </header>
+
+                {isReadOnly && (
+                    <div className="alert alert-info" role="status">
+                        退会または保護者同意の撤回後は閲覧専用です。過去の大会目標は引き続き確認できます。
+                    </div>
+                )}
 
                 {error && (
                     <div className={`alert ${conflict ? 'alert-warning' : 'alert-danger'} goals-feedback`} role="alert">
@@ -862,7 +1008,9 @@ export default function GoalsPage() {
                 {message && <p className="alert alert-info goals-feedback" role="status">{message}</p>}
                 {draftRestored && (
                     <p className="alert alert-info" role="status">
-                        このタブに残っていた未保存の下書きを復元しました。
+                        {forms.queuedGoals.length > 0
+                            ? `未保存の下書きを${forms.queuedGoals.length + 1}件復元しました。保存または破棄すると、次の下書きを表示します。`
+                            : 'このタブに残っていた未保存の下書きを復元しました。'}
                     </p>
                 )}
                 {staleDraftSkipped && (
@@ -870,232 +1018,237 @@ export default function GoalsPage() {
                         別の画面で更新された目標があるため、一部の古い下書きは復元しませんでした。
                     </p>
                 )}
-                {dirty && !draftStorageAvailable && (
+                {!isReadOnly && dirty && !draftStorageAvailable && (
                     <p className="alert alert-warning">
                         下書きはこのタブ内だけに一時保存しています。閉じる前に目標を保存してください。
                     </p>
                 )}
 
-                <section className="card goal-card goal-card-next" aria-labelledby="next-meet-heading">
-                    <div className="goal-card-heading">
+                <section className="goals-milestone-section goals-active-section" aria-labelledby="active-goals-heading">
+                    <div className="goals-section-heading">
                         <span className="goal-card-icon" aria-hidden="true">
                             <FlagCheckeredIcon size={28} weight="fill" />
                         </span>
                         <div>
-                            <p className="goal-card-kicker">いちばん近いゴール</p>
-                            <h2 id="next-meet-heading" className="section-title">次の大会</h2>
-                            <p className="muted">まずは1つだけ。次のレースで実現したいことを書こう。</p>
+                            <p className="goal-card-kicker">今のゴール</p>
+                            <h2 id="active-goals-heading" className="section-title">設定中の大会目標</h2>
+                            <p className="muted">大会・年間・出場目標をまとめて、近い日付から表示します。</p>
                         </div>
-                        {forms.nextMeet.id && <span className="badge badge-primary">保存済み</span>}
                     </div>
-                    <form onSubmit={(event) => {
-                        event.preventDefault();
-                        void saveGoal(forms.nextMeet, 'next-meet');
-                    }}>
-                        <GoalFields
-                            form={forms.nextMeet}
-                            idPrefix="next-meet"
-                            variant="next_meet"
-                            disabled={busy}
-                            onChange={(field, value) => updateSingleton('next_meet', field, value)}
-                        />
-                        <div className="goal-actions">
-                            <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={busy || !forms.nextMeet.title.trim() || !nextMeetChanged}
-                            >
-                                <FloppyDiskIcon aria-hidden="true" size={20} weight="bold" />
-                                {savingKey === 'next-meet' ? '保存中…' : forms.nextMeet.id ? '次の大会を更新' : '次の大会を保存'}
-                            </button>
-                            {forms.nextMeet.id && (
+
+                    {!isReadOnly && editingKey === 'new' && (
+                        <form
+                            id="new-goal-form"
+                            className="card goal-card goal-new-milestone goal-new-inline"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                void saveGoal(forms.newGoal, 'new-goal');
+                            }}
+                            aria-labelledby="new-goal-heading"
+                        >
+                            <div className="goal-new-heading">
+                                <span className="goal-new-icon" aria-hidden="true">
+                                    <PlusIcon size={22} weight="bold" />
+                                </span>
+                                <div>
+                                    <h3 id="new-goal-heading">新しい大会目標</h3>
+                                    <p className="muted">種類を選び、大会名・日付・目標の順に入力します。</p>
+                                </div>
+                            </div>
+                            <fieldset className="goal-type-fieldset">
+                                <legend className="form-label">目標の種類</legend>
+                                <div className="goal-type-options">
+                                    {(['next_meet', 'annual', 'milestone'] as const).map((type) => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            className={`goal-type-option${forms.newGoal.type === type ? ' goal-type-option-selected' : ''}`}
+                                            aria-pressed={forms.newGoal.type === type}
+                                            onClick={() => updateNewGoalType(type)}
+                                            disabled={busy}
+                                        >
+                                            {GOAL_TYPE_LABELS[type]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </fieldset>
+                            <GoalFields
+                                form={forms.newGoal}
+                                idPrefix="new-goal"
+                                variant={forms.newGoal.type}
+                                disabled={busy}
+                                onChange={updateNewGoal}
+                            />
+                            <div className="goal-actions">
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    disabled={
+                                        busy
+                                        || !forms.newGoal.title.trim()
+                                        || ((forms.newGoal.type === 'annual' || forms.newGoal.type === 'milestone')
+                                            && !forms.newGoal.targetDate)
+                                    }
+                                >
+                                    <FloppyDiskIcon aria-hidden="true" size={20} weight="bold" />
+                                    {savingKey === 'new-goal' ? '追加中…' : 'この目標を追加'}
+                                </button>
                                 <button
                                     type="button"
-                                    className="btn btn-secondary goal-delete-button"
-                                    onClick={() => void archiveGoal(forms.nextMeet, 'next-meet')}
+                                    className="btn btn-secondary"
+                                    onClick={cancelNewGoal}
                                     disabled={busy}
                                 >
-                                    <ArchiveIcon aria-hidden="true" size={19} />
-                                    {deletingKey === 'next-meet' ? '移動中…' : '過去へ移す'}
+                                    キャンセル
                                 </button>
-                            )}
-                        </div>
-                    </form>
-                </section>
+                            </div>
+                        </form>
+                    )}
 
-                <section className="card goal-card" aria-labelledby="annual-heading">
-                    <div className="goal-card-heading">
-                        <span className="goal-card-icon goal-card-icon-annual" aria-hidden="true">
-                            <TrophyIcon size={28} weight="fill" />
-                        </span>
-                        <div>
-                            <p className="goal-card-kicker">1年のテーマ</p>
-                            <h2 id="annual-heading" className="section-title">年間の大会目標</h2>
-                            <p className="muted">1年を通して、どんな選手になりたいかを残そう。</p>
-                        </div>
-                        {forms.annual.id && <span className="badge badge-primary">保存済み</span>}
-                    </div>
-                    <form onSubmit={(event) => {
-                        event.preventDefault();
-                        void saveGoal(forms.annual, 'annual');
-                    }}>
-                        <GoalFields
-                            form={forms.annual}
-                            idPrefix="annual"
-                            variant="annual"
-                            disabled={busy}
-                            onChange={(field, value) => updateSingleton('annual', field, value)}
-                        />
-                        <div className="goal-actions">
-                            <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={
-                                    busy
-                                    || !forms.annual.title.trim()
-                                    || !forms.annual.targetDate
-                                    || !annualChanged
-                                }
-                            >
-                                <FloppyDiskIcon aria-hidden="true" size={20} weight="bold" />
-                                {savingKey === 'annual' ? '保存中…' : forms.annual.id ? '年間目標を更新' : '年間目標を保存'}
-                            </button>
-                            {forms.annual.id && (
+                    {forms.goals.length >= 6 && (
+                        <div className="goal-filter-options" role="group" aria-label="大会目標の絞り込み">
+                            {(['all', 'next_meet', 'annual', 'milestone'] as const).map((filter) => (
                                 <button
+                                    key={filter}
                                     type="button"
-                                    className="btn btn-secondary goal-delete-button"
-                                    onClick={() => void archiveGoal(forms.annual, 'annual')}
-                                    disabled={busy}
+                                    className={`goal-filter-option${goalFilter === filter ? ' goal-filter-option-selected' : ''}`}
+                                    aria-pressed={goalFilter === filter}
+                                    onClick={() => setGoalFilter(filter)}
                                 >
-                                    <ArchiveIcon aria-hidden="true" size={19} />
-                                    {deletingKey === 'annual' ? '移動中…' : '過去へ移す'}
+                                    {GOAL_FILTER_LABELS[filter]}
                                 </button>
-                            )}
+                            ))}
                         </div>
-                    </form>
-                </section>
+                    )}
 
-                <section className="goals-milestone-section" aria-labelledby="milestone-heading">
-                    <div className="goals-section-heading">
-                        <span className="goal-card-icon goal-card-icon-milestone" aria-hidden="true">
-                            <TargetIcon size={28} weight="bold" />
-                        </span>
-                        <div>
-                            <p className="goal-card-kicker">その先のゴール</p>
-                            <h2 id="milestone-heading" className="section-title">いつまでに、どの大会へ？</h2>
-                            <p className="muted">出場したい大会を{MAX_ACTIVE_MILESTONE_GOALS}件まで追加できます。</p>
-                        </div>
-                    </div>
-
-                    {forms.milestones.length === 0 && (
+                    {forms.goals.length === 0 && editingKey !== 'new' && (
                         <div className="goal-empty-state">
                             <ClockCountdownIcon aria-hidden="true" size={30} />
-                            <p>まだ大会への目標はありません。下のフォームから最初の1つを追加しましょう。</p>
+                            <div>
+                                <p><strong>大会目標はまだありません</strong></p>
+                                <p>大会名から気軽に残せます。</p>
+                            </div>
+                            {!isReadOnly && (
+                                <button type="button" className="btn btn-primary btn-small" onClick={openNewGoal}>
+                                    最初の目標を追加
+                                </button>
+                            )}
                         </div>
                     )}
 
                     <div className="goals-milestone-list">
-                        {forms.milestones.map((goal, index) => {
-                            const key = `milestone-${goal.id}`;
-                            const baselineGoal = baselineForms.milestones.find((item) => item.id === goal.id);
+                        {filteredGoals.map((goal) => {
+                            const key = `goal-${goal.id}`;
+                            const baselineGoal = baselineForms.goals.find((item) => item.id === goal.id);
                             const changed = !baselineGoal || !goalFormsEqual(goal, baselineGoal);
                             const displayGoal = getCompetitionGoalDisplayValues(goal);
+                            const target = formatGoalTarget(goal);
+                            const isEditing = !isReadOnly && editingKey === goal.id;
+                            const isPast = isCompetitionGoalElapsed(goal, today);
                             return (
-                                <form
+                                <article
                                     key={goal.id}
-                                    className="card goal-card goal-milestone-card"
-                                    onSubmit={(event) => {
-                                        event.preventDefault();
-                                        void saveGoal(goal, key);
-                                    }}
-                                    aria-labelledby={`${key}-heading`}
+                                    className={`card goal-card goal-list-card${isEditing ? ' goal-list-card-editing' : ''}`}
                                 >
-                                    <div className="goal-milestone-heading">
-                                        <div>
-                                            <p className="goal-number">GOAL {index + 1}</p>
-                                            <h3 id={`${key}-heading`}>{displayGoal.meetName || '大会名未設定'}</h3>
+                                    <div className="goal-list-summary">
+                                        <div className="goal-list-summary-main">
+                                            <div className="goal-list-badges">
+                                                <span className="badge badge-secondary">{GOAL_TYPE_LABELS[goal.type]}</span>
+                                                {goal.id === nextUpcomingGoalId && (
+                                                    <span className="badge badge-primary">次の大会</span>
+                                                )}
+                                                {isPast && (
+                                                    <span className="badge badge-secondary">
+                                                        {goal.type === 'milestone'
+                                                            ? '期限経過'
+                                                            : goal.type === 'annual'
+                                                                ? '対象年終了'
+                                                                : '開催済み'}
+                                                    </span>
+                                                )}
+                                                {changed && <span className="badge badge-secondary">未保存</span>}
+                                            </div>
+                                            <h3>{displayGoal.meetName || displayGoal.goalText || '大会名未設定'}</h3>
+                                            {displayGoal.meetName && displayGoal.goalText && (
+                                                <p>{displayGoal.goalText}</p>
+                                            )}
                                         </div>
-                                        {goal.targetDate && (
+                                        <div className="goal-list-summary-actions">
                                             <span className="goal-deadline-badge">
                                                 <CalendarBlankIcon aria-hidden="true" size={16} />
-                                                {goal.targetDate.replaceAll('-', '.')}
+                                                {target || '日付未定'}
                                             </span>
-                                        )}
+                                            {!isReadOnly && (
+                                                <button
+                                                    id={`goal-edit-${goal.id}`}
+                                                    type="button"
+                                                    className="btn btn-secondary btn-small"
+                                                    aria-expanded={isEditing}
+                                                    aria-controls={`${key}-editor`}
+                                                    onClick={() => setEditingKey(isEditing ? null : goal.id)}
+                                                    disabled={busy}
+                                                >
+                                                    {isEditing ? '閉じる' : '編集'}
+                                                    <CaretDownIcon
+                                                        className={`goal-edit-caret${isEditing ? ' goal-edit-caret-open' : ''}`}
+                                                        aria-hidden="true"
+                                                        size={16}
+                                                        weight="bold"
+                                                    />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <GoalFields
-                                        form={goal}
-                                        idPrefix={key}
-                                        variant="milestone"
-                                        disabled={busy}
-                                        onChange={(field, value) => updateMilestone(goal.id!, field, value)}
-                                    />
-                                    <div className="goal-actions">
-                                        <button
-                                            type="submit"
-                                            className="btn btn-primary"
-                                            disabled={busy || !goal.title.trim() || !goal.targetDate || !changed}
+                                    {isEditing && (
+                                        <form
+                                            id={`${key}-editor`}
+                                            className="goal-list-editor"
+                                            onSubmit={(event) => {
+                                                event.preventDefault();
+                                                void saveGoal(goal, key);
+                                            }}
                                         >
-                                            <FloppyDiskIcon aria-hidden="true" size={20} weight="bold" />
-                                            {savingKey === key ? '更新中…' : 'この目標を更新'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-secondary goal-delete-button"
-                                            onClick={() => void archiveGoal(goal, key)}
-                                            disabled={busy}
-                                        >
-                                            <ArchiveIcon aria-hidden="true" size={19} />
-                                            {deletingKey === key ? '移動中…' : '過去へ移す'}
-                                        </button>
-                                    </div>
-                                </form>
+                                            <GoalFields
+                                                form={goal}
+                                                idPrefix={key}
+                                                variant={goal.type}
+                                                disabled={busy}
+                                                onChange={(field, value) => updateSavedGoal(goal.id!, field, value)}
+                                            />
+                                            <div className="goal-actions">
+                                                <button
+                                                    type="submit"
+                                                    className="btn btn-primary"
+                                                    disabled={
+                                                        busy
+                                                        || !goal.title.trim()
+                                                        || ((goal.type === 'annual' || goal.type === 'milestone') && !goal.targetDate)
+                                                        || !changed
+                                                    }
+                                                >
+                                                    <FloppyDiskIcon aria-hidden="true" size={20} weight="bold" />
+                                                    {savingKey === key ? '更新中…' : '変更を保存'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary goal-delete-button"
+                                                    onClick={() => void archiveGoal(goal, key)}
+                                                    disabled={busy}
+                                                >
+                                                    <ArchiveIcon aria-hidden="true" size={19} />
+                                                    {deletingKey === key ? '移動中…' : '過去へ移す'}
+                                                </button>
+                                            </div>
+                                        </form>
+                                    )}
+                                </article>
                             );
                         })}
                     </div>
 
-                    <form
-                        className="card goal-card goal-new-milestone"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void saveGoal(forms.newMilestone, 'new-milestone');
-                        }}
-                        aria-labelledby="new-milestone-heading"
-                    >
-                        <div className="goal-new-heading">
-                            <span className="goal-new-icon" aria-hidden="true">
-                                <PlusIcon size={22} weight="bold" />
-                            </span>
-                            <div>
-                                <h3 id="new-milestone-heading">大会への目標を追加</h3>
-                                <p className="muted">大会名、日付、目標の順に入力できます。</p>
-                            </div>
-                        </div>
-                        <GoalFields
-                            form={forms.newMilestone}
-                            idPrefix="new-milestone"
-                            variant="milestone"
-                            disabled={busy || forms.milestones.length >= MAX_ACTIVE_MILESTONE_GOALS}
-                            onChange={updateNewMilestone}
-                        />
-                        {forms.milestones.length >= MAX_ACTIVE_MILESTONE_GOALS && (
-                            <p className="alert alert-warning">
-                                登録上限の{MAX_ACTIVE_MILESTONE_GOALS}件に達しています。追加するには、現在の目標を1件「過去へ移す」必要があります。
-                            </p>
-                        )}
-                        <button
-                            type="submit"
-                            className="btn btn-primary btn-block"
-                            disabled={
-                                busy
-                                || forms.milestones.length >= MAX_ACTIVE_MILESTONE_GOALS
-                                || !forms.newMilestone.title.trim()
-                                || !forms.newMilestone.targetDate
-                            }
-                        >
-                            <PlusIcon aria-hidden="true" size={20} weight="bold" />
-                            {savingKey === 'new-milestone' ? '追加中…' : '大会への目標を追加'}
-                        </button>
-                    </form>
+                    {forms.goals.length > 0 && filteredGoals.length === 0 && (
+                        <p className="empty-state">この種類の設定中目標はありません。</p>
+                    )}
                 </section>
 
                 {archivedGoals.length > 0 && (
@@ -1135,18 +1288,20 @@ export default function GoalsPage() {
                                                 <dd>{displayGoal.goalText || '未設定'}</dd>
                                             </div>
                                         </dl>
-                                        <div className="goal-history-actions">
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary btn-small goal-delete-button"
-                                                onClick={() => void deleteArchivedGoal(goal)}
-                                                disabled={busy}
-                                                aria-label={`${displayGoal.meetName || '大会目標'}を完全に削除`}
-                                            >
-                                                <TrashIcon aria-hidden="true" size={17} />
-                                                {deletingKey === `archived-${goal.id}` ? '削除中…' : '完全に削除'}
-                                            </button>
-                                        </div>
+                                        {!isReadOnly && (
+                                            <div className="goal-history-actions">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-small goal-delete-button"
+                                                    onClick={() => void deleteArchivedGoal(goal)}
+                                                    disabled={busy}
+                                                    aria-label={`${displayGoal.meetName || '大会目標'}を完全に削除`}
+                                                >
+                                                    <TrashIcon aria-hidden="true" size={17} />
+                                                    {deletingKey === `archived-${goal.id}` ? '削除中…' : '完全に削除'}
+                                                </button>
+                                            </div>
+                                        )}
                                     </article>
                                 );
                             })}
@@ -1155,7 +1310,13 @@ export default function GoalsPage() {
                 )}
 
                 <div className="goals-draft-status" aria-live="polite">
-                    {dirty ? '未保存の変更は、このタブに下書き保存されています' : 'すべての変更を保存済みです'}
+                    {isReadOnly
+                        ? hasLocalChanges
+                            ? '現在表示している未保存の下書きは反映されていません。必要な内容をコピーしてください'
+                            : '退会中のため閲覧専用です'
+                        : dirty
+                            ? '未保存の変更は、このタブに下書き保存されています'
+                            : 'すべての変更を保存済みです'}
                 </div>
             </main>
         </>

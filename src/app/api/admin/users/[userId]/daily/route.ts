@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: Props) {
                 id: true,
                 logDate: true,
                 score: true,
-                practiced: true,
+                activityType: true,
             },
         });
         const truncated = results.length > 200;

@@ -6,7 +6,7 @@ import { parseStoryReadResponse } from './story-read-response';
 test('story read parser keeps answers created before the current write limit', () => {
     const historicalAnswer = '泳'.repeat(MAX_STORY_ANSWER_LENGTH + 1);
     const parsed = parseStoryReadResponse({
-        user: { id: 'user-1', displayName: '選手' },
+        user: { id: 'user-1', displayName: '選手', membershipStatus: 'ACTIVE' },
         story: {
             version: 3,
             answers: [{ questionNo: 1, answerText: historicalAnswer }],
@@ -19,7 +19,7 @@ test('story read parser keeps answers created before the current write limit', (
 
 test('story read parser ignores obsolete or duplicate questions without hiding valid answers', () => {
     const parsed = parseStoryReadResponse({
-        user: { id: 'user-1', displayName: '選手' },
+        user: { id: 'user-1', displayName: '選手', membershipStatus: 'ACTIVE' },
         story: {
             version: 1,
             answers: [
@@ -37,7 +37,7 @@ test('story read parser ignores obsolete or duplicate questions without hiding v
 
 test('story read parser still rejects malformed response values', () => {
     assert.equal(parseStoryReadResponse({
-        user: { id: 'user-1', displayName: '選手' },
+        user: { id: 'user-1', displayName: '選手', membershipStatus: 'ACTIVE' },
         story: { version: 1, answers: [{ questionNo: 1, answerText: 123 }] },
     }), null);
 });
