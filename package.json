@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "node scripts/prepare-runtime-database.mjs && next start",
     "lint": "eslint --max-warnings=0",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "node --import tsx --test src/lib/*.test.ts",
