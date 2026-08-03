@@ -21,6 +21,11 @@ export const DAILY_LOG_BADGE_DEFINITIONS = Object.freeze([
 export type DailyLogBadgeDefinition = typeof DAILY_LOG_BADGE_DEFINITIONS[number];
 export type DailyLogBadgeMilestone = DailyLogBadgeDefinition['milestone'];
 
+export interface DailyLogBadgeReachCount {
+    milestone: DailyLogBadgeMilestone;
+    userCount: number;
+}
+
 export const DAILY_LOG_BADGE_MILESTONES: readonly DailyLogBadgeMilestone[] = Object.freeze(
     DAILY_LOG_BADGE_DEFINITIONS.map((definition) => definition.milestone),
 );
@@ -101,4 +106,15 @@ export function getNewlyEarnedDailyLogBadges(
     return DAILY_LOG_BADGE_MILESTONES.filter(
         (milestone) => milestone > previousRecordCount && milestone <= currentRecordCount,
     );
+}
+
+export function getDailyLogBadgeReachCounts(
+    userRecordCounts: readonly number[],
+): DailyLogBadgeReachCount[] {
+    for (const recordCount of userRecordCounts) assertRecordCount(recordCount);
+
+    return DAILY_LOG_BADGE_MILESTONES.map((milestone) => ({
+        milestone,
+        userCount: userRecordCounts.filter((recordCount) => recordCount >= milestone).length,
+    }));
 }

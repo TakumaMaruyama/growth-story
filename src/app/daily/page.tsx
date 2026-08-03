@@ -19,6 +19,7 @@ import {
     getDailyLogBadgeDefinition,
     getDailyLogBadgeProgress,
     getNewlyEarnedDailyLogBadges,
+    type DailyLogBadgeReachCount,
     type DailyLogBadgeMilestone,
 } from '@/lib/daily-log-badges';
 import { MAX_DAILY_TEXT_LENGTH } from '@/lib/limits';
@@ -57,6 +58,10 @@ const EMPTY_LOG: LogData = {
     improveText: '',
     tomorrowText: '',
 };
+
+const EMPTY_BADGE_REACH_COUNTS: DailyLogBadgeReachCount[] = DAILY_LOG_BADGE_DEFINITIONS.map(
+    ({ milestone }) => ({ milestone, userCount: 0 }),
+);
 
 const TODAY_REQUEST_KEY = '__today__';
 
@@ -160,6 +165,18 @@ function isEligibleRecordCount(value: unknown): value is number {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isDailyLogBadgeReachCounts(value: unknown): value is DailyLogBadgeReachCount[] {
+    return Array.isArray(value)
+        && value.length === DAILY_LOG_BADGE_DEFINITIONS.length
+        && value.every((item, index) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+            const record = item as Record<string, unknown>;
+            return Object.keys(record).length === 2
+                && record.milestone === DAILY_LOG_BADGE_DEFINITIONS[index]?.milestone
+                && isEligibleRecordCount(record.userCount);
+        });
+}
+
 function readDailyDraft(key: string): { draft: DailyDraft | null; available: boolean } {
     try {
         const saved = readTabDraft(key);
@@ -226,6 +243,9 @@ function DailyLogPageContent() {
     const [detailsExpanded, setDetailsExpanded] = useState(false);
     const [previousFocus, setPreviousFocus] = useState<string | null>(null);
     const [eligibleRecordCount, setEligibleRecordCount] = useState(0);
+    const [badgeReachCounts, setBadgeReachCounts] = useState<DailyLogBadgeReachCount[]>(
+        EMPTY_BADGE_REACH_COUNTS,
+    );
     const [earnedMilestone, setEarnedMilestone] = useState<DailyLogBadgeMilestone | null>(null);
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -282,6 +302,7 @@ function DailyLogPageContent() {
             setDetailsExpanded(false);
             setPreviousFocus(null);
             setEligibleRecordCount(0);
+            setBadgeReachCounts(EMPTY_BADGE_REACH_COUNTS);
             eligibleRecordCountRef.current = 0;
             setEarnedMilestone(null);
             setLoading(true);
@@ -304,6 +325,7 @@ function DailyLogPageContent() {
                     today?: string;
                     previousFocus?: string | null;
                     eligibleRecordCount?: number;
+                    badgeReachCounts?: DailyLogBadgeReachCount[];
                     log?: (Partial<LogData> & { revision?: number; practiced?: boolean }) | null;
                 } | null;
 
@@ -322,6 +344,7 @@ function DailyLogPageContent() {
                     || !data.date
                     || !data.today
                     || !isEligibleRecordCount(data.eligibleRecordCount)
+                    || !isDailyLogBadgeReachCounts(data.badgeReachCounts)
                 ) {
                     setInvalidDate(response.status === 400);
                     setLoadError(data?.error ?? '日誌を読み込めませんでした');
@@ -369,6 +392,7 @@ function DailyLogPageContent() {
                 setActivePrompt(chooseInitialPrompt(initialLog, data.date));
                 setPreviousFocus(typeof data.previousFocus === 'string' ? data.previousFocus : null);
                 setEligibleRecordCount(data.eligibleRecordCount);
+                setBadgeReachCounts(data.badgeReachCounts);
                 eligibleRecordCountRef.current = data.eligibleRecordCount;
                 setDirty(hasDraftChanges);
                 loadedDateRef.current = data.date;
@@ -413,6 +437,10 @@ function DailyLogPageContent() {
     const badgeProgress = useMemo(
         () => getDailyLogBadgeProgress(eligibleRecordCount),
         [eligibleRecordCount],
+    );
+    const badgeReachCountByMilestone = useMemo(
+        () => new Map(badgeReachCounts.map(({ milestone, userCount }) => [milestone, userCount])),
+        [badgeReachCounts],
     );
     const activePromptDefinition = PROMPT_DEFINITIONS.find(
         (prompt) => prompt.key === activePrompt,
@@ -535,6 +563,7 @@ function DailyLogPageContent() {
                 revision?: number;
                 created?: boolean;
                 eligibleRecordCount?: number;
+                badgeReachCounts?: DailyLogBadgeReachCount[];
             } | null;
             if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
                 setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
@@ -554,6 +583,7 @@ function DailyLogPageContent() {
                 || data.revision === null
                 || typeof data.created !== 'boolean'
                 || !isEligibleRecordCount(data.eligibleRecordCount)
+                || !isDailyLogBadgeReachCounts(data.badgeReachCounts)
             ) {
                 setError('保存結果を確認できませんでした。再読み込みして内容を確認してください');
                 return;
@@ -566,6 +596,7 @@ function DailyLogPageContent() {
                 dirtyRef.current = false;
                 setDirty(false);
                 setEligibleRecordCount(data.eligibleRecordCount);
+                setBadgeReachCounts(data.badgeReachCounts);
                 eligibleRecordCountRef.current = data.eligibleRecordCount;
                 setMessage('今日の記録を保存しました');
                 if (
@@ -710,6 +741,7 @@ function DailyLogPageContent() {
                                     {DAILY_LOG_BADGE_DEFINITIONS.map((definition) => {
                                         const earned = definition.milestone <= eligibleRecordCount;
                                         const next = definition.milestone === badgeProgress.nextMilestone;
+                                        const reachCount = badgeReachCountByMilestone.get(definition.milestone) ?? 0;
                                         return (
                                             <li
                                                 key={definition.milestone}
@@ -726,6 +758,9 @@ function DailyLogPageContent() {
                                                 <span>
                                                     <strong>{definition.milestone.toLocaleString('ja-JP')}日</strong>
                                                     <small>{definition.name}</small>
+                                                    <small className="milestone-guide-reach-count">
+                                                        全ユーザーで{reachCount.toLocaleString('ja-JP')}人が到達
+                                                    </small>
                                                 </span>
                                                 {(earned || next) && (
                                                     <em>{earned ? '獲得済み' : '次の目標'}</em>

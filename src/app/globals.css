@@ -1437,6 +1437,13 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
   color: var(--secondary);
 }
 
+.milestone-guide-list .milestone-guide-reach-count {
+  margin-top: 0.25rem;
+  color: var(--foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .milestone-guide-list em {
   grid-column: 2;
   color: var(--primary);

@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { isPracticedActivity, type DailyActivityType } from './daily-activity';
+import {
+    getDailyLogBadgeReachCounts,
+    type DailyLogBadgeReachCount,
+} from './daily-log-badges';
 import { assertMemberWritableInTransaction } from './member-access';
 
 export class DailyLogConflictError extends Error {
@@ -30,6 +34,20 @@ export async function countEligibleDailyLogs(
             logDate: { lte: throughDate },
         },
     });
+}
+
+export async function countDailyLogBadgeReachUsers(
+    throughDate: Date,
+): Promise<DailyLogBadgeReachCount[]> {
+    const userRecordCounts = await prisma.dailyLog.groupBy({
+        by: ['userId'],
+        where: { logDate: { lte: throughDate } },
+        _count: { _all: true },
+    });
+
+    return getDailyLogBadgeReachCounts(
+        userRecordCounts.map((record) => record._count._all),
+    );
 }
 
 export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision: number }> {

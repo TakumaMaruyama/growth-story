@@ -7,6 +7,7 @@ import {
     DAILY_LOG_BADGE_MILESTONES,
     getDailyLogBadgeDefinition,
     getDailyLogBadgeProgress,
+    getDailyLogBadgeReachCounts,
     getNewlyEarnedDailyLogBadges,
     isDailyLogBadgeMilestone,
 } from './daily-log-badges';
@@ -133,12 +134,30 @@ test('newly earned badges include every crossed threshold and ignore edits or de
     assert.deepEqual(getNewlyEarnedDailyLogBadges(3650, 10000), []);
 });
 
+test('badge reach counts include exact totals for every milestone, including zero', () => {
+    const reachCounts = getDailyLogBadgeReachCounts([0, 1, 3, 10, 10, 3650]);
+
+    assert.deepEqual(reachCounts.slice(0, 5), [
+        { milestone: 1, userCount: 5 },
+        { milestone: 3, userCount: 4 },
+        { milestone: 7, userCount: 3 },
+        { milestone: 10, userCount: 3 },
+        { milestone: 25, userCount: 1 },
+    ]);
+    assert.deepEqual(reachCounts.at(-1), { milestone: 3650, userCount: 1 });
+    assert.equal(reachCounts.length, DAILY_LOG_BADGE_MILESTONES.length);
+
+    const empty = getDailyLogBadgeReachCounts([]);
+    assert.equal(empty.every(({ userCount }) => userCount === 0), true);
+});
+
 test('badge helpers reject impossible record counts', () => {
     for (const count of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
         assert.throws(() => getDailyLogBadgeProgress(count), RangeError);
     }
     assert.throws(() => getNewlyEarnedDailyLogBadges(-1, 1), RangeError);
     assert.throws(() => getNewlyEarnedDailyLogBadges(0, 1.5), RangeError);
+    assert.throws(() => getDailyLogBadgeReachCounts([1, -1]), RangeError);
 });
 
 test('daily page keeps the color criteria available but collapsed by default', async () => {
@@ -148,5 +167,6 @@ test('daily page keeps the color criteria available but collapsed by default', a
     assert.match(source, /最高バッジ「レジェンド」を達成しました/);
     assert.match(source, /最終バッジは3,650日（10年）の「レジェンド」です/);
     assert.match(source, /DAILY_LOG_BADGE_DEFINITIONS\.map/);
+    assert.match(source, /全ユーザーで.*人が到達/);
     assert.doesNotMatch(source, /<details className="milestone-guide"\s+open/);
 });

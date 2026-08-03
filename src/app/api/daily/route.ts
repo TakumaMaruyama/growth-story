@@ -6,6 +6,7 @@ import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseDailyLogInput } from '@/lib/validation';
 import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
 import {
+    countDailyLogBadgeReachUsers,
     countEligibleDailyLogs,
     DailyLogConflictError,
     saveDailyLog,
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     try {
         const todayDate = parseDateOnly(today)!;
-        const [log, previousFocusLog, eligibleRecordCount] = await Promise.all([
+        const [log, previousFocusLog, eligibleRecordCount, badgeReachCounts] = await Promise.all([
             prisma.dailyLog.findUnique({
                 where: { userId_logDate: { userId: user.id, logDate } },
                 select: {
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
                 select: { tomorrowText: true },
             }),
             countEligibleDailyLogs(user.id, todayDate),
+            countDailyLogBadgeReachUsers(todayDate),
         ]);
 
         return jsonResponse({
@@ -69,6 +71,7 @@ export async function GET(request: NextRequest) {
             log,
             previousFocus: previousFocusLog?.tomorrowText ?? null,
             eligibleRecordCount,
+            badgeReachCounts,
         });
     } catch (error) {
         console.error('Daily log read error:', error);
@@ -111,13 +114,17 @@ export async function POST(request: NextRequest) {
 
         const log = await saveDailyLog({ userId: user.id, ...input.value });
         const todayDate = parseDateOnly(todayJST())!;
-        const eligibleRecordCount = await countEligibleDailyLogs(user.id, todayDate);
+        const [eligibleRecordCount, badgeReachCounts] = await Promise.all([
+            countEligibleDailyLogs(user.id, todayDate),
+            countDailyLogBadgeReachUsers(todayDate),
+        ]);
 
         return jsonResponse({
             success: true,
             revision: log.revision,
             created: input.value.baseRevision === null,
             eligibleRecordCount,
+            badgeReachCounts,
         });
     } catch (error) {
         if (error instanceof MembershipWriteBlockedError) {
