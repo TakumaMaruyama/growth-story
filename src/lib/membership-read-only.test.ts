@@ -70,12 +70,18 @@ test('shared registration stays link-gated and requires guardian consent', async
     assert.match(routeSource, /isSharedRegistrationAccessAllowed/);
     assert.match(routeSource, /registerUserWithGuardianConsent/);
     assert.doesNotMatch(routeSource, /parseAccountInput/);
+    assert.match(routeSource, /この内容では登録できません/);
+    assert.doesNotMatch(routeSource, /同じ選手名のアカウント/);
 
     const pageSource = await readSource('src/app/register/page.tsx');
     assert.match(pageSource, /window\.location\.hash/);
     assert.match(pageSource, /window\.history\.replaceState/);
     assert.match(pageSource, /guardianConsent/);
-    assert.match(pageSource, /onChange=.*setAthleteName/);
+    assert.match(pageSource, /onChange=.*setAthleteFamilyName/);
+    assert.match(pageSource, /onChange=.*setAthleteGivenName/);
+    assert.match(pageSource, /autoComplete="section-athlete family-name"/);
+    assert.match(pageSource, /autoComplete="section-athlete given-name"/);
+    assert.match(pageSource, /autoComplete="section-guardian name"/);
 
     const accessRouteSource = await readSource('src/app/api/auth/register/access/route.ts');
     assert.match(accessRouteSource, /readJsonObject/);
@@ -87,4 +93,15 @@ test('shared registration stays link-gated and requires guardian consent', async
     assert.match(adminSource, /共通の会員登録URL/);
     assert.doesNotMatch(adminSource, /1選手につき1回/);
     assert.doesNotMatch(adminSource, /registration-invites/);
+});
+
+test('structured real names are not exposed by member content APIs', async () => {
+    for (const route of [
+        'src/app/api/daily/route.ts',
+        'src/app/api/goals/route.ts',
+        'src/app/api/story/route.ts',
+    ]) {
+        const source = await readSource(route);
+        assert.doesNotMatch(source, /familyName|givenName/, `${route} must return only the display name`);
+    }
 });

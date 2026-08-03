@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { parseDateOnly } from '@/lib/date';
 import { jsonResponse } from '@/lib/request';
+import { serializeAdminTargetUser } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string }>;
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest, { params }: Props) {
     try {
         const targetUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, displayName: true },
+            select: { id: true, displayName: true, familyName: true, givenName: true },
         });
         if (!targetUser) return jsonResponse({ error: 'ユーザーが見つかりません' }, 404);
 
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest, { params }: Props) {
 
         return jsonResponse({
             adminUser: { displayName: admin.displayName },
-            targetUser,
+            targetUser: serializeAdminTargetUser(targetUser),
             logs,
             truncated,
         });

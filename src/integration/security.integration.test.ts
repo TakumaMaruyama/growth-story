@@ -317,7 +317,8 @@ test('security database invariants', async (context) => {
     await context.test('one shared registration link can create multiple consented accounts', async () => {
         const now = new Date('2026-08-03T00:00:00.000Z');
         const registrations = Array.from({ length: 4 }, (_, index) => ({
-            athleteName: `共通URLの選手 ${index + 1}`,
+            athleteFamilyName: `共通URL${index + 1}`,
+            athleteGivenName: '選手',
             loginId: `shared_registration_${randomUUID()}`,
             passwordHash: `not-used-${index}`,
             guardianName: `保護者 ${index + 1}`,
@@ -338,7 +339,9 @@ test('security database invariants', async (context) => {
             for (const registeredUser of registeredUsers) {
                 const input = registrations.find((registration) => registration.loginId === registeredUser.loginId);
                 assert.ok(input);
-                assert.equal(registeredUser.displayName, input.athleteName);
+                assert.equal(registeredUser.displayName, input.athleteGivenName);
+                assert.equal(registeredUser.familyName, input.athleteFamilyName);
+                assert.equal(registeredUser.givenName, input.athleteGivenName);
                 assert.equal(registeredUser.role, 'USER');
                 assert.equal(registeredUser.isActive, true);
                 assert.equal(registeredUser.membershipStatus, 'ACTIVE');
@@ -358,14 +361,16 @@ test('security database invariants', async (context) => {
         try {
             const attempts = await Promise.allSettled([
                 registerUserWithGuardianConsent({
-                    athleteName: '重複テスト A',
+                    athleteFamilyName: '重複テスト',
+                    athleteGivenName: 'A',
                     loginId,
                     passwordHash: 'not-used-a',
                     guardianName: '保護者 A',
                     guardianRelationship: '父',
                 }),
                 registerUserWithGuardianConsent({
-                    athleteName: '重複テスト B',
+                    athleteFamilyName: '重複テスト',
+                    athleteGivenName: 'B',
                     loginId,
                     passwordHash: 'not-used-b',
                     guardianName: '保護者 B',
@@ -395,14 +400,16 @@ test('security database invariants', async (context) => {
         try {
             const attempts = await Promise.allSettled([
                 registerUserWithGuardianConsent({
-                    athleteName: 'ＴＥＳＴ　選手',
+                    athleteFamilyName: 'ＴＥＳＴ',
+                    athleteGivenName: '選手',
                     loginId: loginIds[0]!,
                     passwordHash: 'not-used-a',
                     guardianName: '保護者 A',
                     guardianRelationship: '父',
                 }),
                 registerUserWithGuardianConsent({
-                    athleteName: 'test 選手',
+                    athleteFamilyName: 'test',
+                    athleteGivenName: '選手',
                     loginId: loginIds[1]!,
                     passwordHash: 'not-used-b',
                     guardianName: '保護者 B',
@@ -426,7 +433,8 @@ test('security database invariants', async (context) => {
 
             await assert.rejects(
                 () => registerUserWithGuardianConsent({
-                    athleteName: '  Test   選手  ',
+                    athleteFamilyName: '  Test  ',
+                    athleteGivenName: '選手',
                     loginId: loginIds[2]!,
                     passwordHash: 'not-used-retry',
                     guardianName: '保護者 C',
@@ -435,6 +443,124 @@ test('security database invariants', async (context) => {
                 AthleteAlreadyRegisteredError,
             );
             assert.equal(await prisma.user.count({ where: { loginId: { in: loginIds } } }), 1);
+        } finally {
+            await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
+        }
+    });
+
+    await context.test('legacy names without spaces or with only a given name still block re-registration', async () => {
+        const legacyFullLoginId = `legacy_full_${randomUUID()}`;
+        const legacyGivenLoginId = `legacy_given_${randomUUID()}`;
+        const retryFullLoginId = `legacy_full_retry_${randomUUID()}`;
+        const retryGivenLoginId = `legacy_given_retry_${randomUUID()}`;
+        const loginIds = [legacyFullLoginId, legacyGivenLoginId, retryFullLoginId, retryGivenLoginId];
+
+        try {
+            await prisma.user.createMany({
+                data: [
+                    {
+                        loginId: legacyFullLoginId,
+                        displayName: '山田太郎',
+                        passwordHash: 'not-used-full',
+                        role: 'USER',
+                        membershipStatus: 'WITHDRAWN',
+                        withdrawnAt: new Date(),
+                    },
+                    {
+                        loginId: legacyGivenLoginId,
+                        displayName: '花子',
+                        passwordHash: 'not-used-given',
+                        role: 'USER',
+                        membershipStatus: 'WITHDRAWN',
+                        withdrawnAt: new Date(),
+                    },
+                ],
+            });
+
+            await assert.rejects(
+                () => registerUserWithGuardianConsent({
+                    athleteFamilyName: '山田',
+                    athleteGivenName: '太郎',
+                    loginId: retryFullLoginId,
+                    passwordHash: 'not-used-retry-full',
+                    guardianName: '保護者 A',
+                    guardianRelationship: '父',
+                }),
+                AthleteAlreadyRegisteredError,
+            );
+            await assert.rejects(
+                () => registerUserWithGuardianConsent({
+                    athleteFamilyName: '佐藤',
+                    athleteGivenName: '花子',
+                    loginId: retryGivenLoginId,
+                    passwordHash: 'not-used-retry-given',
+                    guardianName: '保護者 B',
+                    guardianRelationship: '母',
+                }),
+                AthleteAlreadyRegisteredError,
+            );
+            assert.equal(await prisma.user.count({ where: { loginId: { in: loginIds } } }), 2);
+        } finally {
+            await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
+        }
+    });
+
+    await context.test('legacy display names with previously allowed invisible characters do not break registration', async () => {
+        const legacyLoginId = `legacy_invisible_${randomUUID()}`;
+        const newLoginId = `legacy_invisible_new_${randomUUID()}`;
+        const loginIds = [legacyLoginId, newLoginId];
+
+        try {
+            await prisma.user.create({
+                data: {
+                    loginId: legacyLoginId,
+                    displayName: '🏊‍♂️',
+                    passwordHash: 'not-used-legacy',
+                    role: 'USER',
+                },
+            });
+
+            const registered = await registerUserWithGuardianConsent({
+                athleteFamilyName: '鈴木',
+                athleteGivenName: '一郎',
+                loginId: newLoginId,
+                passwordHash: 'not-used-new',
+                guardianName: '保護者',
+                guardianRelationship: '父',
+            });
+            assert.equal(registered.displayName, '一郎');
+            assert.equal(await prisma.user.count({ where: { loginId: { in: loginIds } } }), 2);
+        } finally {
+            await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
+        }
+    });
+
+    await context.test('different athletes can share the same given name', async () => {
+        const loginIds = [
+            `same_given_a_${randomUUID()}`,
+            `same_given_b_${randomUUID()}`,
+        ];
+        try {
+            await Promise.all([
+                registerUserWithGuardianConsent({
+                    athleteFamilyName: '山田',
+                    athleteGivenName: '太郎',
+                    loginId: loginIds[0]!,
+                    passwordHash: 'not-used-a',
+                    guardianName: '保護者 A',
+                    guardianRelationship: '父',
+                }),
+                registerUserWithGuardianConsent({
+                    athleteFamilyName: '田中',
+                    athleteGivenName: '太郎',
+                    loginId: loginIds[1]!,
+                    passwordHash: 'not-used-b',
+                    guardianName: '保護者 B',
+                    guardianRelationship: '母',
+                }),
+            ]);
+
+            assert.equal(await prisma.user.count({ where: { loginId: { in: loginIds } } }), 2);
         } finally {
             await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
         }

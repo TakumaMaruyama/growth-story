@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
 
         const {
             accessToken,
-            athleteName,
+            athleteFamilyName,
+            athleteGivenName,
             loginId,
             password,
             guardianName,
@@ -57,7 +58,8 @@ export async function POST(request: NextRequest) {
         }
         const passwordHash = await hashPassword(password);
         const user = await registerUserWithGuardianConsent({
-            athleteName,
+            athleteFamilyName,
+            athleteGivenName,
             loginId,
             passwordHash,
             guardianName,
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         if (error instanceof AthleteAlreadyRegisteredError) {
             return jsonResponse({
-                error: '同じ選手名のアカウントがあります。新規登録せず、利用再開を管理者へ依頼してください',
+                error: 'この内容では登録できません。入力を確認するか、管理者へ連絡してください',
             }, 409);
         }
         if (

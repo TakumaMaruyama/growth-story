@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { STORY_QUESTIONS } from '@/lib/story-questions';
 import { formatJSTDateTime } from '@/lib/date';
 import Nav from '@/components/Nav';
+import { getUserFullName } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string; versionId: string }>;
@@ -19,7 +20,7 @@ export default async function AdminUserStoryVersionPage({ params }: Props) {
     const [targetUser, storyVersion] = await Promise.all([
         prisma.user.findUnique({
             where: { id: userId },
-            select: { displayName: true },
+            select: { displayName: true, familyName: true, givenName: true },
         }),
         prisma.storyVersion.findFirst({
             where: { id: versionId, userId },
@@ -27,6 +28,7 @@ export default async function AdminUserStoryVersionPage({ params }: Props) {
         }),
     ]);
     if (!targetUser || !storyVersion) notFound();
+    const targetFullName = getUserFullName(targetUser);
 
     const answerMap = new Map(storyVersion.answers.map((answer) => [answer.questionNo, answer.answerText]));
 
@@ -37,7 +39,7 @@ export default async function AdminUserStoryVersionPage({ params }: Props) {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Archived story</p>
-                        <h1 className="page-title">{targetUser.displayName}・Ver.{storyVersion.version}</h1>
+                        <h1 className="page-title">{targetFullName}・Ver.{storyVersion.version}</h1>
                     </div>
                     <Link href={`/admin/users/${userId}/story`} className="btn btn-secondary">履歴に戻る</Link>
                 </div>

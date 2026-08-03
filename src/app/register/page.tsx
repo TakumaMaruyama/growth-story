@@ -8,9 +8,9 @@ import {
     GUARDIAN_CONSENT_NOTICE,
 } from '@/lib/guardian-consent';
 import {
-    MAX_DISPLAY_NAME_LENGTH,
     MAX_GUARDIAN_NAME_LENGTH,
     MAX_GUARDIAN_RELATIONSHIP_LENGTH,
+    MAX_REAL_NAME_PART_LENGTH,
     MIN_USER_PASSWORD_LENGTH,
 } from '@/lib/limits';
 import { loginHref, sanitizeReturnPath } from '@/lib/return-path';
@@ -26,7 +26,8 @@ function RegisterPageContent() {
     const returnTo = sanitizeReturnPath(searchParams.get('next'), 'user');
     const [registrationLinkState, setRegistrationLinkState] = useState<RegistrationLinkState>({ status: 'loading' });
     const [accessToken, setAccessToken] = useState('');
-    const [athleteName, setAthleteName] = useState('');
+    const [athleteFamilyName, setAthleteFamilyName] = useState('');
+    const [athleteGivenName, setAthleteGivenName] = useState('');
     const [loginId, setLoginId] = useState('');
     const [guardianName, setGuardianName] = useState('');
     const [guardianRelationship, setGuardianRelationship] = useState('');
@@ -134,7 +135,8 @@ function RegisterPageContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     accessToken,
-                    athleteName,
+                    athleteFamilyName,
+                    athleteGivenName,
                     loginId,
                     guardianName,
                     guardianRelationship,
@@ -198,7 +200,8 @@ function RegisterPageContent() {
                     <div className="card">
                         <div className="alert alert-info" aria-labelledby="registration-notice-heading">
                             <h2 id="registration-notice-heading" className="section-title">登録前にご確認ください</h2>
-                            <p>管理者から案内を受けた保護者のみ登録できます。選手名を正確に入力してください。</p>
+                            <p>管理者から案内を受けた保護者のみ登録できます。選手本人の本名を正確に入力してください。</p>
+                            <p>選手本人の画面には本名の「名」のみ表示し、管理者画面では会員を識別するため本名を表示します。</p>
                             <p>すでに登録済み、または退会した選手は新規登録せず、管理者へ利用再開を依頼してください。</p>
                             {GUARDIAN_CONSENT_NOTICE.map((paragraph) => (
                                 <p key={paragraph}>{paragraph}</p>
@@ -206,20 +209,41 @@ function RegisterPageContent() {
                         </div>
 
                         <form onSubmit={handleSubmit}>
-                            <div className="form-group">
-                                <label htmlFor="athleteName" className="form-label">選手名</label>
-                                <input
-                                    type="text"
-                                    id="athleteName"
-                                    className="form-input"
-                                    value={athleteName}
-                                    onChange={(event) => setAthleteName(event.target.value)}
-                                    required
-                                    maxLength={MAX_DISPLAY_NAME_LENGTH}
-                                    autoComplete="off"
-                                    disabled={loading}
-                                />
-                                <p className="form-help">{athleteName.length}/{MAX_DISPLAY_NAME_LENGTH}文字</p>
+                            <div className="form-group" role="group" aria-labelledby="athlete-real-name-label" aria-describedby="athlete-real-name-help">
+                                <p id="athlete-real-name-label" className="form-label">選手本人の本名</p>
+                                <div className="name-fields">
+                                    <label htmlFor="athleteFamilyName">
+                                        <span>姓</span>
+                                        <input
+                                            type="text"
+                                            id="athleteFamilyName"
+                                            className="form-input"
+                                            value={athleteFamilyName}
+                                            onChange={(event) => setAthleteFamilyName(event.target.value)}
+                                            required
+                                            maxLength={MAX_REAL_NAME_PART_LENGTH}
+                                            autoComplete="section-athlete family-name"
+                                            disabled={loading}
+                                        />
+                                    </label>
+                                    <label htmlFor="athleteGivenName">
+                                        <span>名</span>
+                                        <input
+                                            type="text"
+                                            id="athleteGivenName"
+                                            className="form-input"
+                                            value={athleteGivenName}
+                                            onChange={(event) => setAthleteGivenName(event.target.value)}
+                                            required
+                                            maxLength={MAX_REAL_NAME_PART_LENGTH}
+                                            autoComplete="section-athlete given-name"
+                                            disabled={loading}
+                                        />
+                                    </label>
+                                </div>
+                                <p id="athlete-real-name-help" className="form-help">
+                                    姓・名とも本名を入力してください。アプリ内では「名」を表示します。
+                                </p>
                             </div>
 
                             <div className="form-group">
@@ -232,7 +256,7 @@ function RegisterPageContent() {
                                     onChange={(event) => setGuardianName(event.target.value)}
                                     required
                                     maxLength={MAX_GUARDIAN_NAME_LENGTH}
-                                    autoComplete="name"
+                                    autoComplete="section-guardian name"
                                     disabled={loading}
                                 />
                             </div>

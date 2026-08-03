@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react/dist/csr/ArrowsClockwise';
 import { BedIcon } from '@phosphor-icons/react/dist/csr/Bed';
@@ -15,8 +15,11 @@ import { PersonSimpleSwimIcon } from '@phosphor-icons/react/dist/csr/PersonSimpl
 import { TargetIcon } from '@phosphor-icons/react/dist/csr/Target';
 import Nav from '@/components/Nav';
 import {
+    DAILY_LOG_BADGE_DEFINITIONS,
+    getDailyLogBadgeDefinition,
     getDailyLogBadgeProgress,
-    isDailyLogBadgeMilestone,
+    getNewlyEarnedDailyLogBadges,
+    type DailyLogBadgeMilestone,
 } from '@/lib/daily-log-badges';
 import { MAX_DAILY_TEXT_LENGTH } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
@@ -223,7 +226,7 @@ function DailyLogPageContent() {
     const [detailsExpanded, setDetailsExpanded] = useState(false);
     const [previousFocus, setPreviousFocus] = useState<string | null>(null);
     const [eligibleRecordCount, setEligibleRecordCount] = useState(0);
-    const [earnedMilestone, setEarnedMilestone] = useState<number | null>(null);
+    const [earnedMilestone, setEarnedMilestone] = useState<DailyLogBadgeMilestone | null>(null);
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -240,6 +243,7 @@ function DailyLogPageContent() {
     const userIdRef = useRef<string | null>(null);
     const baselineLogRef = useRef<LogData>(EMPTY_LOG);
     const baseRevisionRef = useRef<number | null>(null);
+    const eligibleRecordCountRef = useRef(0);
     const dirtyRef = useRef(false);
     const suppressRestoredRequestRef = useRef<string | null>(null);
 
@@ -278,6 +282,7 @@ function DailyLogPageContent() {
             setDetailsExpanded(false);
             setPreviousFocus(null);
             setEligibleRecordCount(0);
+            eligibleRecordCountRef.current = 0;
             setEarnedMilestone(null);
             setLoading(true);
             setLoadError('');
@@ -364,6 +369,7 @@ function DailyLogPageContent() {
                 setActivePrompt(chooseInitialPrompt(initialLog, data.date));
                 setPreviousFocus(typeof data.previousFocus === 'string' ? data.previousFocus : null);
                 setEligibleRecordCount(data.eligibleRecordCount);
+                eligibleRecordCountRef.current = data.eligibleRecordCount;
                 setDirty(hasDraftChanges);
                 loadedDateRef.current = data.date;
                 loadedRequestKeyRef.current = requestKey;
@@ -511,6 +517,7 @@ function DailyLogPageContent() {
 
         const savedLog = { ...log };
         const baseRevision = baseRevisionRef.current;
+        const previousEligibleRecordCount = eligibleRecordCountRef.current;
         setSaving(true);
         setMessage('');
         setError('');
@@ -559,14 +566,18 @@ function DailyLogPageContent() {
                 dirtyRef.current = false;
                 setDirty(false);
                 setEligibleRecordCount(data.eligibleRecordCount);
+                eligibleRecordCountRef.current = data.eligibleRecordCount;
                 setMessage('今日の記録を保存しました');
                 if (
                     data.created
                     && todayDate !== null
                     && saveDate <= todayDate
-                    && isDailyLogBadgeMilestone(data.eligibleRecordCount)
                 ) {
-                    setEarnedMilestone(data.eligibleRecordCount);
+                    const newlyEarned = getNewlyEarnedDailyLogBadges(
+                        previousEligibleRecordCount,
+                        data.eligibleRecordCount,
+                    );
+                    setEarnedMilestone(newlyEarned.at(-1) ?? null);
                 }
             }
         } catch {
@@ -589,6 +600,18 @@ function DailyLogPageContent() {
         && dirty,
     );
     const badgePercent = Math.round(badgeProgress.progress * 100);
+    const displayedBadgeMilestone = badgeProgress.nextMilestone
+        ?? badgeProgress.latestMilestone
+        ?? DAILY_LOG_BADGE_DEFINITIONS[0].milestone;
+    const displayedBadge = getDailyLogBadgeDefinition(displayedBadgeMilestone);
+    const earnedBadge = earnedMilestone
+        ? getDailyLogBadgeDefinition(earnedMilestone)
+        : null;
+    const milestoneStyle = {
+        '--milestone-color': displayedBadge.color,
+        '--milestone-swatch': displayedBadge.swatch,
+        '--milestone-foreground': displayedBadge.foreground,
+    } as CSSProperties;
 
     return (
         <>
@@ -633,14 +656,18 @@ function DailyLogPageContent() {
                                 退会中のため、日誌は閲覧のみです。利用再開は管理者へご連絡ください。
                             </div>
                         )}
-                        <section className={`milestone-card${earnedMilestone ? ' milestone-card-earned' : ''}`} aria-labelledby="milestone-heading">
+                        <section
+                            className={`milestone-card${earnedMilestone ? ' milestone-card-earned' : ''}`}
+                            aria-labelledby="milestone-heading"
+                            style={milestoneStyle}
+                        >
                             <div className="milestone-content">
                                 <div>
-                                    <p className="milestone-kicker">
+                                    <p id="milestone-heading" className="milestone-kicker">
                                         <FlagIcon aria-hidden="true" size={22} weight="bold" />
                                         {badgeProgress.nextMilestone
                                             ? `次のバッジまであと${badgeProgress.remaining}回`
-                                            : 'すべての節目を達成しました'}
+                                            : '最高バッジを達成しました'}
                                     </p>
                                     <div
                                         className="milestone-progress-track"
@@ -652,23 +679,62 @@ function DailyLogPageContent() {
                                     >
                                         <span className="milestone-progress-value" style={{ width: `${badgePercent}%` }} />
                                     </div>
-                                    <p className="milestone-record-count">日誌を残した日 {eligibleRecordCount}日</p>
+                                    <p className="milestone-record-count">日誌を残した日 {eligibleRecordCount.toLocaleString('ja-JP')}日</p>
                                 </div>
-                                <div className="milestone-preview" aria-label={badgeProgress.nextMilestone ? `${badgeProgress.nextMilestone}回記録バッジ` : '200回記録バッジ'}>
+                                <div className="milestone-preview" aria-label={`${displayedBadge.milestone}回記録・${displayedBadge.name}バッジ`}>
                                     <span className="milestone-icon" aria-hidden="true">
                                         <MedalIcon size={62} weight="duotone" />
                                     </span>
                                     <span>
-                                        <strong>{badgeProgress.nextMilestone ?? 200}回記録</strong>
-                                        <small>節目バッジ</small>
+                                        <strong>{displayedBadge.milestone.toLocaleString('ja-JP')}回記録</strong>
+                                        <small>{displayedBadge.name}バッジ</small>
                                     </span>
                                 </div>
                             </div>
-                            {earnedMilestone && (
+                            {earnedBadge && (
                                 <p className="milestone-earned-message" role="status">
-                                    {earnedMilestone}回記録バッジを獲得しました！
+                                    <span
+                                        className="milestone-earned-swatch"
+                                        style={{ background: earnedBadge.swatch }}
+                                        aria-hidden="true"
+                                    />
+                                    <span>
+                                        {earnedBadge.milestone.toLocaleString('ja-JP')}回記録・{earnedBadge.name}バッジを獲得しました！
+                                    </span>
                                 </p>
                             )}
+                            <details className="milestone-guide">
+                                <summary>バッジの色と達成条件を見る</summary>
+                                <p>日誌を残した日数が次の基準に達すると、バッジの色が変わります。</p>
+                                <ul className="milestone-guide-list">
+                                    {DAILY_LOG_BADGE_DEFINITIONS.map((definition) => {
+                                        const earned = definition.milestone <= eligibleRecordCount;
+                                        const next = definition.milestone === badgeProgress.nextMilestone;
+                                        return (
+                                            <li
+                                                key={definition.milestone}
+                                                className={[
+                                                    earned ? 'milestone-guide-earned' : '',
+                                                    next ? 'milestone-guide-next' : '',
+                                                ].filter(Boolean).join(' ')}
+                                            >
+                                                <span
+                                                    className="milestone-guide-swatch"
+                                                    style={{ background: definition.swatch }}
+                                                    aria-hidden="true"
+                                                />
+                                                <span>
+                                                    <strong>{definition.milestone.toLocaleString('ja-JP')}日</strong>
+                                                    <small>{definition.name}</small>
+                                                </span>
+                                                {(earned || next) && (
+                                                    <em>{earned ? '獲得済み' : '次の目標'}</em>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </details>
                         </section>
 
                         <form onSubmit={handleSubmit} className="quick-log-form">

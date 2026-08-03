@@ -9,6 +9,7 @@ import {
     sortCompetitionGoalsForDisplay,
 } from '@/lib/competition-goal-display';
 import Nav from '@/components/Nav';
+import { getUserFullName, hasStructuredRealName } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string }>;
@@ -31,6 +32,9 @@ export default async function AdminUserDetailPage({ params }: Props) {
                 id: true,
                 loginId: true,
                 displayName: true,
+                familyName: true,
+                givenName: true,
+                role: true,
                 isActive: true,
                 membershipStatus: true,
                 withdrawnAt: true,
@@ -71,6 +75,8 @@ export default async function AdminUserDetailPage({ params }: Props) {
     ]);
 
     if (!targetUser) notFound();
+    const targetFullName = getUserFullName(targetUser);
+    const targetHasRealName = hasStructuredRealName(targetUser);
     const today = todayJST();
     const primaryGoal = sortCompetitionGoalsForDisplay(activeGoals, today)[0];
     const primaryGoalDisplay = primaryGoal
@@ -89,7 +95,7 @@ export default async function AdminUserDetailPage({ params }: Props) {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">User details</p>
-                        <h1 className="page-title">{targetUser.displayName}</h1>
+                        <h1 className="page-title">{targetFullName}</h1>
                         <p className="muted">ユーザーの記録状況と最新データを確認します。</p>
                     </div>
                     <Link href="/admin/users" className="btn btn-secondary">一覧に戻る</Link>
@@ -101,7 +107,14 @@ export default async function AdminUserDetailPage({ params }: Props) {
                         <dl className="detail-list">
                             <dt>ログインID</dt>
                             <dd><strong>{targetUser.loginId}</strong></dd>
-                            <dt>表示名</dt>
+                            <dt>選手氏名（本名）</dt>
+                            <dd>
+                                <strong>{targetFullName}</strong>
+                                {targetUser.role === 'USER' && !targetHasRealName && (
+                                    <><br /><span className="muted">本名未登録の既存会員</span></>
+                                )}
+                            </dd>
+                            <dt>本人画面の表示</dt>
                             <dd><strong>{targetUser.displayName}</strong></dd>
                             <dt>会員状態</dt>
                             <dd>

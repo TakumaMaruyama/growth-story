@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { GUARDIAN_CONSENT_NOTICE_VERSION } from './guardian-consent';
 import { prisma } from './prisma';
-import { normalizeAthleteRegistrationIdentity } from './shared-registration';
+import {
+    normalizeAthleteRegistrationIdentity,
+    normalizeAthleteRegistrationIdentityParts,
+    normalizeStoredAthleteRegistrationIdentity,
+} from './shared-registration';
 
 export class AthleteAlreadyRegisteredError extends Error {
     constructor() {
@@ -10,7 +14,8 @@ export class AthleteAlreadyRegisteredError extends Error {
 }
 
 export interface GuardianRegistrationInput {
-    athleteName: string;
+    athleteFamilyName: string;
+    athleteGivenName: string;
     loginId: string;
     passwordHash: string;
     guardianName: string;
@@ -21,7 +26,14 @@ export async function registerUserWithGuardianConsent(
     input: GuardianRegistrationInput,
     now = new Date(),
 ): Promise<{ id: string; role: 'USER'; displayName: string }> {
-    const athleteIdentity = normalizeAthleteRegistrationIdentity(input.athleteName);
+    const athleteIdentity = normalizeAthleteRegistrationIdentityParts(
+        input.athleteFamilyName,
+        input.athleteGivenName,
+    );
+    const legacyAthleteIdentity = normalizeAthleteRegistrationIdentity(
+        `${input.athleteFamilyName}${input.athleteGivenName}`,
+    );
+    const legacyGivenNameIdentity = normalizeAthleteRegistrationIdentity(input.athleteGivenName);
 
     return prisma.$transaction(async (tx) => {
         await tx.$queryRaw`
@@ -32,18 +44,28 @@ export async function registerUserWithGuardianConsent(
 
         const existingMembers = await tx.user.findMany({
             where: { role: 'USER' },
-            select: { displayName: true },
+            select: { displayName: true, familyName: true, givenName: true },
         });
-        if (existingMembers.some(
-            (member) => normalizeAthleteRegistrationIdentity(member.displayName) === athleteIdentity,
-        )) {
+        if (existingMembers.some((member) => {
+            if (member.familyName && member.givenName) {
+                return normalizeAthleteRegistrationIdentityParts(
+                    member.familyName,
+                    member.givenName,
+                ) === athleteIdentity;
+            }
+            const legacyMemberIdentity = normalizeStoredAthleteRegistrationIdentity(member.displayName);
+            return legacyMemberIdentity === legacyAthleteIdentity
+                || legacyMemberIdentity === legacyGivenNameIdentity;
+        })) {
             throw new AthleteAlreadyRegisteredError();
         }
 
         const user = await tx.user.create({
             data: {
                 loginId: input.loginId,
-                displayName: input.athleteName,
+                displayName: input.athleteGivenName,
+                familyName: input.athleteFamilyName,
+                givenName: input.athleteGivenName,
                 passwordHash: input.passwordHash,
                 role: 'USER',
                 isActive: true,

@@ -11,11 +11,15 @@ import {
   MAX_DISPLAY_NAME_LENGTH,
   MAX_GUARDIAN_NAME_LENGTH,
   MAX_GUARDIAN_RELATIONSHIP_LENGTH,
+  MAX_REAL_NAME_PART_LENGTH,
   MAX_STORY_ANSWER_LENGTH,
   MAX_STORY_NOTE_LENGTH,
   MAX_STORY_VERSIONS,
 } from './limits';
-import { isSharedRegistrationToken } from './shared-registration';
+import {
+  hasForbiddenRegistrationNameCharacters,
+  isSharedRegistrationToken,
+} from './shared-registration';
 
 const LOGIN_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{2,63}$/u;
 const QUESTION_NUMBERS = new Set(Array.from({ length: 15 }, (_, index) => index + 1));
@@ -34,6 +38,21 @@ function failure<T>(error: string): ValidationResult<T> {
 
 function normalizeRequiredString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readRequiredRealNamePart(value: unknown, label: string): ValidationResult<string> {
+  if (typeof value !== 'string' || !value.trim()) {
+    return failure(`${label}を入力してください`);
+  }
+  if (hasForbiddenRegistrationNameCharacters(value)) {
+    return failure(`${label}に改行・制御文字・不可視文字は使用できません`);
+  }
+
+  const normalized = value.trim().replace(/\s+/gu, ' ');
+  if (normalized.length > MAX_REAL_NAME_PART_LENGTH) {
+    return failure(`${label}は${MAX_REAL_NAME_PART_LENGTH}文字以内で入力してください`);
+  }
+  return success(normalized);
 }
 
 function readOptionalText(
@@ -131,7 +150,8 @@ export function parseAccountInput(
 
 export interface SharedRegistrationInput {
   accessToken: string;
-  athleteName: string;
+  athleteFamilyName: string;
+  athleteGivenName: string;
   loginId: string;
   password: string;
   guardianName: string;
@@ -143,7 +163,8 @@ export function parseSharedRegistrationInput(
 ): ValidationResult<SharedRegistrationInput> {
   const allowedFields = new Set([
     'accessToken',
-    'athleteName',
+    'athleteFamilyName',
+    'athleteGivenName',
     'loginId',
     'password',
     'guardianName',
@@ -155,7 +176,8 @@ export function parseSharedRegistrationInput(
   }
 
   const accessToken = body.accessToken;
-  const athleteName = normalizeRequiredString(body.athleteName);
+  const athleteFamilyName = readRequiredRealNamePart(body.athleteFamilyName, '選手の姓（本名）');
+  const athleteGivenName = readRequiredRealNamePart(body.athleteGivenName, '選手の名（本名）');
   const loginId = normalizeRequiredString(body.loginId);
   const password = typeof body.password === 'string' ? body.password : '';
   const guardianName = normalizeRequiredString(body.guardianName);
@@ -164,11 +186,16 @@ export function parseSharedRegistrationInput(
   if (!isSharedRegistrationToken(accessToken)) {
     return failure('この登録URLは利用できません。管理者から届いた最新のURLを開いてください');
   }
-  if (!athleteName || !loginId || !password || !guardianName || !guardianRelationship) {
-    return failure('選手名、ログイン情報、保護者情報を入力してください');
+  if (!athleteFamilyName.ok) return athleteFamilyName;
+  if (!athleteGivenName.ok) return athleteGivenName;
+  if (!loginId || !password || !guardianName || !guardianRelationship) {
+    return failure('選手の本名、ログイン情報、保護者情報を入力してください');
   }
-  if (athleteName.length > MAX_DISPLAY_NAME_LENGTH) {
-    return failure(`選手名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください`);
+  if (
+    hasForbiddenRegistrationNameCharacters(guardianName)
+    || hasForbiddenRegistrationNameCharacters(guardianRelationship)
+  ) {
+    return failure('保護者情報に改行・制御文字・不可視文字は使用できません');
   }
   if (!LOGIN_ID_PATTERN.test(loginId)) {
     return failure('ログインIDは3〜64文字の文字・数字・ピリオド・ハイフン・アンダースコアで入力してください');
@@ -187,7 +214,8 @@ export function parseSharedRegistrationInput(
 
   return success({
     accessToken,
-    athleteName,
+    athleteFamilyName: athleteFamilyName.value,
+    athleteGivenName: athleteGivenName.value,
     loginId,
     password,
     guardianName,

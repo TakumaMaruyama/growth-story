@@ -100,12 +100,15 @@ async function main() {
     await applyMigration(migrationPool, '20260803000000_invite_registration_and_membership_status');
     await applyMigration(migrationPool, '20260803000100_pause_daily_activity_check');
     await applyMigration(migrationPool, '20260803000200_restore_daily_activity_check');
+    await applyMigration(migrationPool, '20260803000300_user_real_name');
 
     const legacyMembership = await migrationPool.query<{
         membership_status: string;
         withdrawn_at: Date | null;
+        family_name: string | null;
+        given_name: string | null;
     }>(
-        `SELECT "membership_status"::text, "withdrawn_at"
+        `SELECT "membership_status"::text, "withdrawn_at", "family_name", "given_name"
            FROM "users"
           WHERE "id" = $1`,
         [userId],
@@ -113,6 +116,8 @@ async function main() {
     assert.deepEqual(legacyMembership.rows, [{
         membership_status: 'ACTIVE',
         withdrawn_at: null,
+        family_name: null,
+        given_name: null,
     }]);
 
     const adminId = randomUUID();
@@ -166,6 +171,70 @@ async function main() {
         consent_user_id: registeredUserId,
         notice_version: '2026-08-03-v1',
     }]);
+
+    await migrationPool.query(
+        `UPDATE "users"
+            SET "family_name" = '山田', "given_name" = '太郎', "display_name" = '太郎'
+          WHERE "id" = $1`,
+        [registeredUserId],
+    );
+    const structuredName = await migrationPool.query<{
+        family_name: string;
+        given_name: string;
+        display_name: string;
+    }>(
+        `SELECT "family_name", "given_name", "display_name"
+           FROM "users"
+          WHERE "id" = $1`,
+        [registeredUserId],
+    );
+    assert.deepEqual(structuredName.rows, [{
+        family_name: '山田',
+        given_name: '太郎',
+        display_name: '太郎',
+    }]);
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "given_name" = NULL WHERE "id" = $1`,
+            [registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "family_name" = $1 WHERE "id" = $2`,
+            ['姓'.repeat(41), registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "family_name" = $1 WHERE "id" = $2`,
+            ['山\u200B田', registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "family_name" = $1 WHERE "id" = $2`,
+            ['山\uFE0F田', registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "given_name" = $1 WHERE "id" = $2`,
+            ['太\u034F郎', registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "users" SET "given_name" = $1 WHERE "id" = $2`,
+            ['太\u2028郎', registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
 
     await migrationPool.query(
         `UPDATE "users"

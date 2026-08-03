@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
+import { getUserFullName, hasStructuredRealName } from '@/lib/user-name';
 
 const PAGE_SIZE = 50;
 
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
                 id: true,
                 loginId: true,
                 displayName: true,
+                familyName: true,
+                givenName: true,
                 role: true,
                 isActive: true,
                 membershipStatus: true,
@@ -30,10 +33,22 @@ export async function GET(request: NextRequest) {
         });
         const hasMore = users.length > PAGE_SIZE;
         const page = hasMore ? users.slice(0, PAGE_SIZE) : users;
+        const serializedUsers = page.map((target) => ({
+            id: target.id,
+            loginId: target.loginId,
+            displayName: target.displayName,
+            fullName: getUserFullName(target),
+            hasRealName: hasStructuredRealName(target),
+            role: target.role,
+            isActive: target.isActive,
+            membershipStatus: target.membershipStatus,
+            withdrawnAt: target.withdrawnAt,
+            createdAt: target.createdAt,
+        }));
 
         return jsonResponse({
             adminUser: { displayName: user.displayName },
-            users: page,
+            users: serializedUsers,
             nextCursor: hasMore ? page.at(-1)?.id ?? null : null,
         });
     } catch (error) {

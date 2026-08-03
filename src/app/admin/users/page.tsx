@@ -14,6 +14,8 @@ interface UserListItem {
     id: string;
     loginId: string;
     displayName: string;
+    fullName: string;
+    hasRealName: boolean;
     role: 'USER' | 'ADMIN';
     isActive: boolean;
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
@@ -174,10 +176,10 @@ export default function AdminUsersPage() {
         const nextStatus = target.membershipStatus === 'ACTIVE' ? 'WITHDRAWN' : 'ACTIVE';
         const confirmed = nextStatus === 'WITHDRAWN'
             ? window.confirm(
-                `${target.displayName}さんを退会にしますか？\n過去の記録は閲覧できますが、新規入力と更新ができなくなります。`,
+                `${target.fullName}さんを退会にしますか？\n過去の記録は閲覧できますが、新規入力と更新ができなくなります。`,
             )
             : window.confirm(
-                `${target.displayName}さんの利用を再開しますか？\n保護者の利用再開の意思を確認してから実行してください。`,
+                `${target.fullName}さんの利用を再開しますか？\n保護者の利用再開の意思を確認してから実行してください。`,
             );
         if (!confirmed) return;
 
@@ -196,7 +198,7 @@ export default function AdminUsersPage() {
     const toggleActive = async (target: UserListItem) => {
         const nextState = !target.isActive;
         if (!nextState && !window.confirm(
-            `${target.displayName}さんのログインを停止しますか？\nログイン中のセッションはすべて終了します。`,
+            `${target.fullName}さんのログインを停止しますか？\nログイン中のセッションはすべて終了します。`,
         )) return;
 
         await runUserAction(
@@ -225,8 +227,8 @@ export default function AdminUsersPage() {
                         このURLは全選手共通で、何人でも登録できます。管理者から案内を受けた保護者だけに送ってください。
                     </p>
                     <div className="alert alert-info">
-                        <p>選手名は登録時に保護者が入力します。選手ごとのURL発行は不要です。</p>
-                        <p>登録済み・退会済みの選手は同じ名前で再登録できません。利用再開は会員一覧から行ってください。</p>
+                        <p>選手の本名（姓・名）は登録時に保護者が入力します。選手ごとのURL発行は不要です。</p>
+                        <p>登録済み・退会済みの選手は同じ本名で再登録できません。利用再開は会員一覧から行ってください。</p>
                         <p className="muted">URLが意図せず共有された場合は、Replitの `REGISTRATION_ACCESS_TOKEN` を更新して再公開すると、以前のURLを一括で無効にできます。</p>
                     </div>
                     {registrationLinkError && (
@@ -289,7 +291,7 @@ export default function AdminUsersPage() {
                                     <thead>
                                         <tr>
                                             <th scope="col">ログインID</th>
-                                            <th scope="col">表示名</th>
+                                            <th scope="col">選手氏名（本名）</th>
                                             <th scope="col">会員状態</th>
                                             <th scope="col">ログイン</th>
                                             <th scope="col">操作</th>
@@ -299,7 +301,12 @@ export default function AdminUsersPage() {
                                         {users.map((target) => (
                                             <tr key={target.id}>
                                                 <td>{target.loginId}</td>
-                                                <td>{target.displayName}</td>
+                                                <td>
+                                                    {target.fullName}
+                                                    {target.role === 'USER' && !target.hasRealName && (
+                                                        <small className="legacy-name-note">本名未登録</small>
+                                                    )}
+                                                </td>
                                                 <td>
                                                     <span className={`badge ${target.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
                                                         {target.membershipStatus === 'ACTIVE' ? '利用中' : '退会'}
@@ -315,7 +322,7 @@ export default function AdminUsersPage() {
                                                         <Link
                                                             href={`/admin/users/${target.id}`}
                                                             className="btn btn-secondary btn-small"
-                                                            aria-label={`${target.displayName}さんの詳細を見る`}
+                                                            aria-label={`${target.fullName}さんの詳細を見る`}
                                                         >
                                                             詳細
                                                         </Link>

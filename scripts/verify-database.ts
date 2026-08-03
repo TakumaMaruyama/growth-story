@@ -96,6 +96,13 @@ async function main() {
     if (withdrawnAtColumn.is_nullable !== 'YES') {
         throw new Error('users.withdrawn_at must be nullable');
     }
+    for (const nameColumn of ['family_name', 'given_name']) {
+        const column = userColumnMap.get(nameColumn);
+        if (!column) throw new Error(`users.${nameColumn} is missing`);
+        if (column.is_nullable !== 'YES') {
+            throw new Error(`users.${nameColumn} must remain nullable for legacy members`);
+        }
+    }
 
     const membershipStatusEnum = await pool.query<{ enumlabel: string }>(
         `SELECT e.enumlabel
@@ -208,6 +215,7 @@ async function main() {
         'competition_goals_annual_year_check',
         'competition_goals_active_archive_check',
         'users_membership_status_check',
+        'users_real_name_pair_check',
         'registration_invites_token_hash_check',
         'registration_invites_athlete_name_check',
         'registration_invites_state_check',
@@ -229,6 +237,7 @@ async function main() {
 
     const requiredValidatedConstraints = [
         'users_membership_status_check',
+        'users_real_name_pair_check',
         'registration_invites_token_hash_check',
         'registration_invites_athlete_name_check',
         'registration_invites_state_check',

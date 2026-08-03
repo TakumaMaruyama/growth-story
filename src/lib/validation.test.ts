@@ -10,9 +10,9 @@ import {
 } from './validation';
 import {
     MAX_DAILY_TEXT_LENGTH,
-    MAX_DISPLAY_NAME_LENGTH,
     MAX_GUARDIAN_NAME_LENGTH,
     MAX_GUARDIAN_RELATIONSHIP_LENGTH,
+    MAX_REAL_NAME_PART_LENGTH,
     MAX_STORY_ANSWER_LENGTH,
     MIN_ADMIN_PASSWORD_LENGTH,
 } from './limits';
@@ -70,7 +70,8 @@ test('administrator bootstrap keeps the stronger ten-character minimum', () => {
 test('shared registration requires a valid access token and explicit guardian consent', () => {
     const result = parseSharedRegistrationInput({
         accessToken: VALID_ACCESS_TOKEN,
-        athleteName: ' 選手 一郎 ',
+        athleteFamilyName: ' 選手 ',
+        athleteGivenName: ' 一郎 ',
         loginId: ' invited_swimmer ',
         password: 'safe-pass-2026',
         guardianName: ' 保護者 太郎 ',
@@ -82,7 +83,8 @@ test('shared registration requires a valid access token and explicit guardian co
     if (result.ok) {
         assert.deepEqual(result.value, {
             accessToken: VALID_ACCESS_TOKEN,
-            athleteName: '選手 一郎',
+            athleteFamilyName: '選手',
+            athleteGivenName: '一郎',
             loginId: 'invited_swimmer',
             password: 'safe-pass-2026',
             guardianName: '保護者 太郎',
@@ -92,7 +94,8 @@ test('shared registration requires a valid access token and explicit guardian co
 
     const otherwiseValid = {
         accessToken: VALID_ACCESS_TOKEN,
-        athleteName: '選手 一郎',
+        athleteFamilyName: '選手',
+        athleteGivenName: '一郎',
         loginId: 'invited_swimmer',
         password: 'safe-pass-2026',
         guardianName: '保護者 太郎',
@@ -104,12 +107,22 @@ test('shared registration requires a valid access token and explicit guardian co
     assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: '' }).ok, false);
     assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: 'A'.repeat(42) }).ok, false);
     assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: `${'A'.repeat(42)}=` }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteFamilyName: '' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteGivenName: '' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteGivenName: '太郎\n別名' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteFamilyName: '山\u200B田' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteGivenName: '太郎\u202E' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteGivenName: '太\uFE0F郎' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, athleteGivenName: '太\u034F郎' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, guardianName: '保護者\u2066太郎' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, guardianName: '保護者\u2028太郎' }).ok, false);
 });
 
 test('shared registration rejects account overrides and oversized details', () => {
     const valid = {
         accessToken: VALID_ACCESS_TOKEN,
-        athleteName: '選手 一郎',
+        athleteFamilyName: '選手',
+        athleteGivenName: '一郎',
         loginId: 'invited_swimmer',
         password: 'safe-pass-2026',
         guardianName: '保護者 太郎',
@@ -117,6 +130,7 @@ test('shared registration rejects account overrides and oversized details', () =
         guardianConsent: true,
     };
 
+    assert.equal(parseSharedRegistrationInput({ ...valid, athleteName: '旧形式の選手名' }).ok, false);
     assert.equal(parseSharedRegistrationInput({ ...valid, displayName: '別の選手名' }).ok, false);
     assert.equal(parseSharedRegistrationInput({ ...valid, role: 'ADMIN' }).ok, false);
     assert.equal(parseSharedRegistrationInput({ ...valid, isActive: false }).ok, false);
@@ -126,7 +140,11 @@ test('shared registration rejects account overrides and oversized details', () =
     assert.equal(parseSharedRegistrationInput({ ...valid, password: 'short' }).ok, false);
     assert.equal(parseSharedRegistrationInput({
         ...valid,
-        athleteName: '泳'.repeat(MAX_DISPLAY_NAME_LENGTH + 1),
+        athleteFamilyName: '泳'.repeat(MAX_REAL_NAME_PART_LENGTH + 1),
+    }).ok, false);
+    assert.equal(parseSharedRegistrationInput({
+        ...valid,
+        athleteGivenName: '名'.repeat(MAX_REAL_NAME_PART_LENGTH + 1),
     }).ok, false);
     assert.equal(parseSharedRegistrationInput({
         ...valid,

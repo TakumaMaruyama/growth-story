@@ -13,6 +13,7 @@ interface Props {
 
 interface UserInfo {
     displayName: string;
+    fullName?: string;
 }
 
 interface DailyLogItem {
@@ -121,7 +122,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Daily logs</p>
-                        <h1 className="page-title">{targetUser?.displayName ?? 'ユーザー'}の日誌</h1>
+                        <h1 className="page-title">{targetUser?.fullName ?? targetUser?.displayName ?? 'ユーザー'}の日誌</h1>
                     </div>
                     <Link href={`/admin/users/${userId}`} className="btn btn-secondary">ユーザー詳細に戻る</Link>
                 </div>
@@ -179,7 +180,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                     ) : loadError ? null : logs.length > 0 ? (
                         <div className="table-wrap">
                             <table className="table">
-                                <caption className="visually-hidden">{targetUser?.displayName}さんの日誌</caption>
+                                <caption className="visually-hidden">{targetUser?.fullName ?? targetUser?.displayName}さんの日誌</caption>
                                 <thead>
                                     <tr>
                                         <th scope="col">日付</th>

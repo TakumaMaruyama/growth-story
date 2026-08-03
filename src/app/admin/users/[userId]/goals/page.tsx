@@ -10,6 +10,7 @@ import {
 } from '@/lib/competition-goal-display';
 import { formatJSTDateTime, formatJSTDisplay, todayJST } from '@/lib/date';
 import { prisma } from '@/lib/prisma';
+import { getUserFullName } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string }>;
@@ -27,9 +28,10 @@ export default async function AdminUserGoalsPage({ params }: Props) {
 
     const targetUser = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, displayName: true },
+        select: { id: true, displayName: true, familyName: true, givenName: true },
     });
     if (!targetUser) notFound();
+    const targetFullName = getUserFullName(targetUser);
 
     const goals = await prisma.competitionGoal.findMany({
         where: { userId },
@@ -124,7 +126,7 @@ export default async function AdminUserGoalsPage({ params }: Props) {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Competition goals</p>
-                        <h1 className="page-title">{targetUser.displayName}の大会目標</h1>
+                        <h1 className="page-title">{targetFullName}の大会目標</h1>
                         <p className="muted">設定中の目標と、過去へ移した目標を読み取り専用で確認します。</p>
                     </div>
                     <Link href={`/admin/users/${userId}`} className="btn btn-secondary">ユーザー詳細に戻る</Link>

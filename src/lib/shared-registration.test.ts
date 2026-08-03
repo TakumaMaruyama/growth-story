@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     getConfiguredSharedRegistrationToken,
+    hasForbiddenRegistrationNameCharacters,
     isSharedRegistrationAccessAllowed,
     isSharedRegistrationToken,
     normalizeAthleteRegistrationIdentity,
+    normalizeAthleteRegistrationIdentityParts,
+    normalizeStoredAthleteRegistrationIdentity,
 } from './shared-registration';
 
 const VALID_TOKEN = 'A'.repeat(43);
@@ -51,5 +54,44 @@ test('athlete identity normalization catches harmless name variations', () => {
     assert.equal(
         normalizeAthleteRegistrationIdentity('  ＴＥＳＴ　選手  '),
         normalizeAthleteRegistrationIdentity('test 選手'),
+    );
+    assert.equal(
+        normalizeAthleteRegistrationIdentity('山田太郎'),
+        normalizeAthleteRegistrationIdentity('山田 太郎'),
+    );
+});
+
+test('athlete identity rejects invisible and directional formatting characters', () => {
+    for (const value of [
+        '山\u034F田',
+        '山\u180B田',
+        '山\u200B田',
+        '山\u2028田',
+        '山\u2029田',
+        '山\u202E田',
+        '山\u2066田',
+        '山\uFE0F田',
+        '山\uFEFF田',
+    ]) {
+        assert.equal(hasForbiddenRegistrationNameCharacters(value), true);
+        assert.throws(() => normalizeAthleteRegistrationIdentity(value), RangeError);
+    }
+    assert.equal(hasForbiddenRegistrationNameCharacters('山田 太郎'), false);
+});
+
+test('legacy stored names are canonicalized without throwing on previously allowed characters', () => {
+    assert.equal(normalizeStoredAthleteRegistrationIdentity('山\u200B田 太郎'), '山田太郎');
+    assert.equal(normalizeStoredAthleteRegistrationIdentity('🏊‍♂️'), '🏊♂');
+    assert.equal(normalizeStoredAthleteRegistrationIdentity('旧\n表示名'), '旧表示名');
+});
+
+test('structured athlete identity preserves the surname and given-name boundary', () => {
+    assert.equal(
+        normalizeAthleteRegistrationIdentityParts(' ＴＥＳＴ ', ' 選手 '),
+        normalizeAthleteRegistrationIdentityParts('test', '選手'),
+    );
+    assert.notEqual(
+        normalizeAthleteRegistrationIdentityParts('山', '田郎'),
+        normalizeAthleteRegistrationIdentityParts('山田', '郎'),
     );
 });

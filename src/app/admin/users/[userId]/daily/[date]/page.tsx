@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { formatJSTDisplay, parseDateOnly } from '@/lib/date';
 import { getDailyActivityLabel } from '@/lib/daily-activity';
 import Nav from '@/components/Nav';
+import { getUserFullName } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string; date: string }>;
@@ -21,13 +22,14 @@ export default async function AdminUserDailyDetailPage({ params }: Props) {
     const [targetUser, log] = await Promise.all([
         prisma.user.findUnique({
             where: { id: userId },
-            select: { displayName: true },
+            select: { displayName: true, familyName: true, givenName: true },
         }),
         prisma.dailyLog.findUnique({
             where: { userId_logDate: { userId, logDate } },
         }),
     ]);
     if (!targetUser || !log) notFound();
+    const targetFullName = getUserFullName(targetUser);
 
     const sections = [
         { title: '良かったこと・できたこと', value: log.goodText },
@@ -42,7 +44,7 @@ export default async function AdminUserDailyDetailPage({ params }: Props) {
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Daily log</p>
-                        <h1 className="page-title">{targetUser.displayName}の日誌</h1>
+                        <h1 className="page-title">{targetFullName}の日誌</h1>
                         <p className="muted">{formatJSTDisplay(log.logDate)}</p>
                     </div>
                     <Link href={`/admin/users/${userId}/daily`} className="btn btn-secondary">一覧に戻る</Link>

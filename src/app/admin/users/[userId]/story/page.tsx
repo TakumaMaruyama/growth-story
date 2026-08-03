@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { formatJSTDateTime } from '@/lib/date';
 import Nav from '@/components/Nav';
+import { getUserFullName } from '@/lib/user-name';
 
 interface Props {
     params: Promise<{ userId: string }>;
@@ -36,11 +37,12 @@ export default async function AdminUserStoryPage({ params, searchParams }: Props
     const [targetUser, totalVersions] = await Promise.all([
         prisma.user.findUnique({
             where: { id: userId },
-            select: { displayName: true },
+            select: { displayName: true, familyName: true, givenName: true },
         }),
         prisma.storyVersion.count({ where: { userId } }),
     ]);
     if (!targetUser) notFound();
+    const targetFullName = getUserFullName(targetUser);
 
     const totalPages = Math.max(1, Math.ceil(totalVersions / PAGE_SIZE));
     const page = Math.min(requestedPage, totalPages);
@@ -61,7 +63,7 @@ export default async function AdminUserStoryPage({ params, searchParams }: Props
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Story history</p>
-                        <h1 className="page-title">{targetUser.displayName}の競泳物語</h1>
+                        <h1 className="page-title">{targetFullName}の競泳物語</h1>
                     </div>
                     <Link href={`/admin/users/${userId}`} className="btn btn-secondary">ユーザー詳細に戻る</Link>
                 </div>
@@ -71,7 +73,7 @@ export default async function AdminUserStoryPage({ params, searchParams }: Props
                     {versions.length > 0 ? (
                         <div className="table-wrap">
                             <table className="table">
-                                <caption className="visually-hidden">{targetUser.displayName}さんの競泳物語の保存履歴</caption>
+                                <caption className="visually-hidden">{targetFullName}さんの競泳物語の保存履歴</caption>
                                 <thead>
                                     <tr>
                                         <th scope="col">バージョン</th>
@@ -90,7 +92,7 @@ export default async function AdminUserStoryPage({ params, searchParams }: Props
                                                 <Link
                                                     href={`/admin/users/${userId}/story/${version.id}`}
                                                     className="btn btn-secondary btn-small"
-                                                    aria-label={`${targetUser.displayName}さんの競泳物語 Ver.${version.version}を見る`}
+                                                    aria-label={`${targetFullName}さんの競泳物語 Ver.${version.version}を見る`}
                                                 >
                                                     見る
                                                 </Link>

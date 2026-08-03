@@ -1,15 +1,30 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import test from 'node:test';
 import {
+    DAILY_LOG_BADGE_DEFINITIONS,
     DAILY_LOG_BADGE_MILESTONES,
+    getDailyLogBadgeDefinition,
     getDailyLogBadgeProgress,
     getNewlyEarnedDailyLogBadges,
     isDailyLogBadgeMilestone,
 } from './daily-log-badges';
 
-test('daily-log badge milestones remain the agreed cumulative thresholds', () => {
-    assert.deepEqual(DAILY_LOG_BADGE_MILESTONES, [1, 3, 7, 10, 25, 50, 100, 200]);
+test('daily-log badge milestones support decades of cumulative use', () => {
+    assert.deepEqual(DAILY_LOG_BADGE_MILESTONES, [
+        1, 3, 7, 10, 25, 50, 100, 200, 365, 500,
+        730, 1000, 1500, 2000, 2500, 3000, 3650, 5000, 7300, 10000,
+    ]);
     assert.equal(Object.isFrozen(DAILY_LOG_BADGE_MILESTONES), true);
+    assert.equal(Object.isFrozen(DAILY_LOG_BADGE_DEFINITIONS), true);
+    assert.equal(DAILY_LOG_BADGE_DEFINITIONS.length, 20);
+    for (const definition of DAILY_LOG_BADGE_DEFINITIONS) {
+        assert.equal(getDailyLogBadgeDefinition(definition.milestone), definition);
+        assert.ok(definition.name);
+        assert.match(definition.color, /^#[0-9a-f]{6}$/i);
+        assert.match(definition.swatch, /^linear-gradient\(/);
+    }
 });
 
 test('badge progress starts before the first record', () => {
@@ -51,7 +66,7 @@ test('badge progress advances between milestones and resets at each earned miles
     assert.equal(getDailyLogBadgeProgress(5).progress, 0.5);
 });
 
-test('badge progress handles the requested 7, 10 and 200 record boundaries', () => {
+test('badge progress handles early and long-term record boundaries', () => {
     const seven = getDailyLogBadgeProgress(7);
     assert.equal(seven.latestMilestone, 7);
     assert.equal(seven.nextMilestone, 10);
@@ -64,29 +79,36 @@ test('badge progress handles the requested 7, 10 and 200 record boundaries', () 
     assert.equal(ten.remaining, 15);
     assert.equal(ten.progress, 0);
 
-    assert.deepEqual(getDailyLogBadgeProgress(200), {
-        recordCount: 200,
-        earnedMilestones: [1, 3, 7, 10, 25, 50, 100, 200],
-        latestMilestone: 200,
-        nextMilestone: null,
-        remaining: null,
-        progress: 1,
-    });
+    const twoHundred = getDailyLogBadgeProgress(200);
+    assert.equal(twoHundred.latestMilestone, 200);
+    assert.equal(twoHundred.nextMilestone, 365);
+    assert.equal(twoHundred.remaining, 165);
+
+    const tenYears = getDailyLogBadgeProgress(3650);
+    assert.equal(tenYears.latestMilestone, 3650);
+    assert.equal(tenYears.nextMilestone, 5000);
+    assert.equal(tenYears.remaining, 1350);
 });
 
-test('counts beyond the final milestone remain complete', () => {
-    const progress = getDailyLogBadgeProgress(365);
-    assert.equal(progress.latestMilestone, 200);
+test('counts at and beyond the final long-term milestone remain complete', () => {
+    const progress = getDailyLogBadgeProgress(10000);
+    assert.equal(progress.latestMilestone, 10000);
     assert.equal(progress.nextMilestone, null);
     assert.equal(progress.remaining, null);
     assert.equal(progress.progress, 1);
+
+    const beyond = getDailyLogBadgeProgress(12000);
+    assert.equal(beyond.latestMilestone, 10000);
+    assert.equal(beyond.nextMilestone, null);
+    assert.equal(beyond.remaining, null);
+    assert.equal(beyond.progress, 1);
 });
 
 test('milestone detection accepts only exact milestone counts', () => {
     for (const milestone of DAILY_LOG_BADGE_MILESTONES) {
         assert.equal(isDailyLogBadgeMilestone(milestone), true, String(milestone));
     }
-    for (const count of [0, 2, 4, 6, 8, 9, 11, 24, 26, 199, 201]) {
+    for (const count of [0, 2, 4, 6, 8, 9, 11, 24, 26, 199, 201, 364, 366, 9999, 10001]) {
         assert.equal(isDailyLogBadgeMilestone(count), false, String(count));
     }
 });
@@ -94,10 +116,12 @@ test('milestone detection accepts only exact milestone counts', () => {
 test('newly earned badges include every crossed threshold and ignore edits or decreases', () => {
     assert.deepEqual(getNewlyEarnedDailyLogBadges(0, 1), [1]);
     assert.deepEqual(getNewlyEarnedDailyLogBadges(1, 3), [3]);
+    assert.deepEqual(getNewlyEarnedDailyLogBadges(2, 4), [3]);
     assert.deepEqual(getNewlyEarnedDailyLogBadges(6, 10), [7, 10]);
     assert.deepEqual(getNewlyEarnedDailyLogBadges(10, 10), []);
     assert.deepEqual(getNewlyEarnedDailyLogBadges(10, 9), []);
-    assert.deepEqual(getNewlyEarnedDailyLogBadges(200, 201), []);
+    assert.deepEqual(getNewlyEarnedDailyLogBadges(199, 365), [200, 365]);
+    assert.deepEqual(getNewlyEarnedDailyLogBadges(10000, 10001), []);
 });
 
 test('badge helpers reject impossible record counts', () => {
@@ -106,4 +130,12 @@ test('badge helpers reject impossible record counts', () => {
     }
     assert.throws(() => getNewlyEarnedDailyLogBadges(-1, 1), RangeError);
     assert.throws(() => getNewlyEarnedDailyLogBadges(0, 1.5), RangeError);
+});
+
+test('daily page keeps the color criteria available but collapsed by default', async () => {
+    const source = await readFile(path.join(process.cwd(), 'src/app/daily/page.tsx'), 'utf8');
+    assert.match(source, /<details className="milestone-guide">/);
+    assert.match(source, /バッジの色と達成条件を見る/);
+    assert.match(source, /DAILY_LOG_BADGE_DEFINITIONS\.map/);
+    assert.doesNotMatch(source, /<details className="milestone-guide"\s+open/);
 });
