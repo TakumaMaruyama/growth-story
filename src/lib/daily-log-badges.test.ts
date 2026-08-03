@@ -167,6 +167,6 @@ test('daily page keeps the color criteria available but collapsed by default', a
     assert.match(source, /最高バッジ「レジェンド」を達成しました/);
     assert.match(source, /最終バッジは3,650日（10年）の「レジェンド」です/);
     assert.match(source, /DAILY_LOG_BADGE_DEFINITIONS\.map/);
-    assert.match(source, /全ユーザーで.*人が到達/);
+    assert.match(source, /これまで.*人が到達/);
     assert.doesNotMatch(source, /<details className="milestone-guide"\s+open/);
 });

@@ -759,7 +759,7 @@ function DailyLogPageContent() {
                                                     <strong>{definition.milestone.toLocaleString('ja-JP')}日</strong>
                                                     <small>{definition.name}</small>
                                                     <small className="milestone-guide-reach-count">
-                                                        全ユーザーで{reachCount.toLocaleString('ja-JP')}人が到達
+                                                        これまで{reachCount.toLocaleString('ja-JP')}人が到達
                                                     </small>
                                                 </span>
                                                 {(earned || next) && (
