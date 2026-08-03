@@ -64,14 +64,27 @@ test('withdrawn membership remains part of read responses and does not disable l
     );
 });
 
-test('public registration is invite-only at both validation and route boundaries', async () => {
+test('shared registration stays link-gated and requires guardian consent', async () => {
     const routeSource = await readSource('src/app/api/auth/register/route.ts');
-    assert.match(routeSource, /parseInviteRegistrationInput/);
-    assert.match(routeSource, /registerInvitedUser/);
+    assert.match(routeSource, /parseSharedRegistrationInput/);
+    assert.match(routeSource, /isSharedRegistrationAccessAllowed/);
+    assert.match(routeSource, /registerUserWithGuardianConsent/);
     assert.doesNotMatch(routeSource, /parseAccountInput/);
 
     const pageSource = await readSource('src/app/register/page.tsx');
-    assert.match(pageSource, /searchParams\.get\('invite'\)/);
+    assert.match(pageSource, /window\.location\.hash/);
+    assert.match(pageSource, /window\.history\.replaceState/);
     assert.match(pageSource, /guardianConsent/);
-    assert.doesNotMatch(pageSource, /onChange=.*setDisplayName/);
+    assert.match(pageSource, /onChange=.*setAthleteName/);
+
+    const accessRouteSource = await readSource('src/app/api/auth/register/access/route.ts');
+    assert.match(accessRouteSource, /readJsonObject/);
+    assert.match(accessRouteSource, /isSharedRegistrationAccessAllowed/);
+    const registerLayoutSource = await readSource('src/app/register/layout.tsx');
+    assert.match(registerLayoutSource, /referrer:\s*'no-referrer'/);
+
+    const adminSource = await readSource('src/app/admin/users/page.tsx');
+    assert.match(adminSource, /共通の会員登録URL/);
+    assert.doesNotMatch(adminSource, /1選手につき1回/);
+    assert.doesNotMatch(adminSource, /registration-invites/);
 });

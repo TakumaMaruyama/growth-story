@@ -22,12 +22,8 @@ import {
 import { prisma } from '../lib/prisma';
 import { consumeRateLimits } from '../lib/rate-limit';
 import {
-    generateRegistrationInviteToken,
-    hashRegistrationInviteToken,
-} from '../lib/registration-invite';
-import {
-    registerInvitedUser,
-    RegistrationInviteUnavailableError,
+    AthleteAlreadyRegisteredError,
+    registerUserWithGuardianConsent,
 } from '../lib/registration-service';
 import { hashSessionToken } from '../lib/session-token';
 import { saveStoryVersion, StoryVersionConflictError } from '../lib/story-service';
@@ -318,100 +314,129 @@ test('security database invariants', async (context) => {
         }
     });
 
-    await context.test('registration invitations are single-use and create consent atomically', async () => {
-        const admin = await prisma.user.create({
-            data: {
-                loginId: `invite_admin_${randomUUID()}`,
-                displayName: 'Invite integration admin',
-                passwordHash: 'not-used-by-this-test',
-                role: 'ADMIN',
-            },
-            select: { id: true },
-        });
-        const token = generateRegistrationInviteToken();
+    await context.test('one shared registration link can create multiple consented accounts', async () => {
         const now = new Date('2026-08-03T00:00:00.000Z');
-        const loginIds = [
-            `invited_a_${randomUUID()}`,
-            `invited_b_${randomUUID()}`,
-        ] as const;
+        const registrations = Array.from({ length: 4 }, (_, index) => ({
+            athleteName: `共通URLの選手 ${index + 1}`,
+            loginId: `shared_registration_${randomUUID()}`,
+            passwordHash: `not-used-${index}`,
+            guardianName: `保護者 ${index + 1}`,
+            guardianRelationship: index % 2 === 0 ? '父' : '母',
+        }));
+        const loginIds = registrations.map((registration) => registration.loginId);
 
         try {
-            const invite = await prisma.registrationInvite.create({
-                data: {
-                    tokenHash: hashRegistrationInviteToken(token),
-                    athleteName: '招待された選手',
-                    createdById: admin.id,
-                    expiresAt: new Date('2026-08-10T00:00:00.000Z'),
-                },
-                select: { id: true },
-            });
-
-            const attempts = await Promise.allSettled(loginIds.map((loginId, index) => (
-                registerInvitedUser({
-                    inviteToken: token,
-                    loginId,
-                    passwordHash: `not-used-${index}`,
-                    guardianName: `保護者 ${index + 1}`,
-                    guardianRelationship: index === 0 ? '父' : '母',
-                }, now)
+            await Promise.all(registrations.map((registration) => (
+                registerUserWithGuardianConsent(registration, now)
             )));
 
+            const registeredUsers = await prisma.user.findMany({
+                where: { loginId: { in: loginIds } },
+                include: { guardianConsent: true },
+            });
+            assert.equal(registeredUsers.length, registrations.length);
+            for (const registeredUser of registeredUsers) {
+                const input = registrations.find((registration) => registration.loginId === registeredUser.loginId);
+                assert.ok(input);
+                assert.equal(registeredUser.displayName, input.athleteName);
+                assert.equal(registeredUser.role, 'USER');
+                assert.equal(registeredUser.isActive, true);
+                assert.equal(registeredUser.membershipStatus, 'ACTIVE');
+                assert.ok(registeredUser.guardianConsent);
+                assert.equal(registeredUser.guardianConsent.guardianName, input.guardianName);
+                assert.equal(registeredUser.guardianConsent.guardianRelationship, input.guardianRelationship);
+                assert.equal(registeredUser.guardianConsent.noticeVersion, GUARDIAN_CONSENT_NOTICE_VERSION);
+                assert.equal(registeredUser.guardianConsent.acceptedAt.getTime(), now.getTime());
+            }
+        } finally {
+            await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
+        }
+    });
+
+    await context.test('parallel duplicate login IDs create exactly one user and consent', async () => {
+        const loginId = `shared_duplicate_${randomUUID()}`;
+        try {
+            const attempts = await Promise.allSettled([
+                registerUserWithGuardianConsent({
+                    athleteName: '重複テスト A',
+                    loginId,
+                    passwordHash: 'not-used-a',
+                    guardianName: '保護者 A',
+                    guardianRelationship: '父',
+                }),
+                registerUserWithGuardianConsent({
+                    athleteName: '重複テスト B',
+                    loginId,
+                    passwordHash: 'not-used-b',
+                    guardianName: '保護者 B',
+                    guardianRelationship: '母',
+                }),
+            ]);
+            assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
+            assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
+
+            const users = await prisma.user.findMany({
+                where: { loginId },
+                include: { guardianConsent: true },
+            });
+            assert.equal(users.length, 1);
+            assert.ok(users[0]?.guardianConsent);
+        } finally {
+            await prisma.user.deleteMany({ where: { loginId } });
+        }
+    });
+
+    await context.test('same athlete cannot re-register concurrently or after withdrawal', async () => {
+        const loginIds = [
+            `same_athlete_a_${randomUUID()}`,
+            `same_athlete_b_${randomUUID()}`,
+            `same_athlete_retry_${randomUUID()}`,
+        ];
+        try {
+            const attempts = await Promise.allSettled([
+                registerUserWithGuardianConsent({
+                    athleteName: 'ＴＥＳＴ　選手',
+                    loginId: loginIds[0]!,
+                    passwordHash: 'not-used-a',
+                    guardianName: '保護者 A',
+                    guardianRelationship: '父',
+                }),
+                registerUserWithGuardianConsent({
+                    athleteName: 'test 選手',
+                    loginId: loginIds[1]!,
+                    passwordHash: 'not-used-b',
+                    guardianName: '保護者 B',
+                    guardianRelationship: '母',
+                }),
+            ]);
             assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
             assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
             const rejected = attempts.find((result) => result.status === 'rejected');
             assert.ok(rejected && rejected.status === 'rejected');
-            assert.ok(rejected.reason instanceof RegistrationInviteUnavailableError);
+            assert.ok(rejected.reason instanceof AthleteAlreadyRegisteredError);
 
-            const storedInvite = await prisma.registrationInvite.findUniqueOrThrow({
-                where: { id: invite.id },
-                select: { tokenHash: true, usedAt: true, usedByUserId: true },
+            const existing = await prisma.user.findFirstOrThrow({
+                where: { loginId: { in: loginIds.slice(0, 2) } },
+                select: { id: true },
             });
-            assert.equal(storedInvite.tokenHash, hashRegistrationInviteToken(token));
-            assert.equal(storedInvite.usedAt?.getTime(), now.getTime());
-            assert.ok(storedInvite.usedByUserId);
-
-            const registeredUsers = await prisma.user.findMany({
-                where: { loginId: { in: [...loginIds] } },
-                include: { guardianConsent: true },
+            await prisma.user.update({
+                where: { id: existing.id },
+                data: { membershipStatus: 'WITHDRAWN', withdrawnAt: new Date() },
             });
-            assert.equal(registeredUsers.length, 1);
-            const registeredUser = registeredUsers[0];
-            assert.ok(registeredUser);
-            assert.equal(registeredUser.id, storedInvite.usedByUserId);
-            assert.equal(registeredUser.displayName, '招待された選手');
-            assert.equal(registeredUser.membershipStatus, 'ACTIVE');
-            assert.ok(registeredUser.guardianConsent);
-            assert.equal(
-                registeredUser.guardianConsent.noticeVersion,
-                GUARDIAN_CONSENT_NOTICE_VERSION,
-            );
-            assert.equal(registeredUser.guardianConsent.acceptedAt.getTime(), now.getTime());
-            assert.equal(
-                await prisma.adminAuditEvent.count({
-                    where: {
-                        actorId: admin.id,
-                        targetUserId: registeredUser.id,
-                        action: 'INVITED_USER_REGISTERED',
-                    },
-                }),
-                1,
-            );
 
             await assert.rejects(
-                () => registerInvitedUser({
-                    inviteToken: token,
-                    loginId: `invite_reuse_${randomUUID()}`,
-                    passwordHash: 'not-used-reuse',
-                    guardianName: '再利用 保護者',
+                () => registerUserWithGuardianConsent({
+                    athleteName: '  Test   選手  ',
+                    loginId: loginIds[2]!,
+                    passwordHash: 'not-used-retry',
+                    guardianName: '保護者 C',
                     guardianRelationship: '父',
-                }, now),
-                RegistrationInviteUnavailableError,
+                }),
+                AthleteAlreadyRegisteredError,
             );
+            assert.equal(await prisma.user.count({ where: { loginId: { in: loginIds } } }), 1);
         } finally {
-            await prisma.registrationInvite.deleteMany({ where: { createdById: admin.id } });
-            await prisma.adminAuditEvent.deleteMany({ where: { actorId: admin.id } });
-            await prisma.user.deleteMany({ where: { loginId: { in: [...loginIds] } } });
-            await prisma.user.delete({ where: { id: admin.id } });
+            await prisma.user.deleteMany({ where: { loginId: { in: loginIds } } });
         }
     });
 

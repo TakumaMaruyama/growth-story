@@ -4,9 +4,8 @@ import {
     parseAccountInput,
     parseBooleanInput,
     parseDailyLogInput,
-    parseInviteCreateInput,
-    parseInviteRegistrationInput,
     parseLoginInput,
+    parseSharedRegistrationInput,
     parseStoryInput,
 } from './validation';
 import {
@@ -18,7 +17,7 @@ import {
     MIN_ADMIN_PASSWORD_LENGTH,
 } from './limits';
 
-const VALID_INVITE_TOKEN = 'A'.repeat(43);
+const VALID_ACCESS_TOKEN = 'A'.repeat(43);
 
 test('account validation accepts a strong, well-formed account', () => {
     const result = parseAccountInput({
@@ -68,9 +67,10 @@ test('administrator bootstrap keeps the stronger ten-character minimum', () => {
     }, options).ok, true);
 });
 
-test('invite registration requires a valid invite and explicit guardian consent', () => {
-    const result = parseInviteRegistrationInput({
-        inviteToken: VALID_INVITE_TOKEN,
+test('shared registration requires a valid access token and explicit guardian consent', () => {
+    const result = parseSharedRegistrationInput({
+        accessToken: VALID_ACCESS_TOKEN,
+        athleteName: ' 選手 一郎 ',
         loginId: ' invited_swimmer ',
         password: 'safe-pass-2026',
         guardianName: ' 保護者 太郎 ',
@@ -81,7 +81,8 @@ test('invite registration requires a valid invite and explicit guardian consent'
     assert.equal(result.ok, true);
     if (result.ok) {
         assert.deepEqual(result.value, {
-            inviteToken: VALID_INVITE_TOKEN,
+            accessToken: VALID_ACCESS_TOKEN,
+            athleteName: '選手 一郎',
             loginId: 'invited_swimmer',
             password: 'safe-pass-2026',
             guardianName: '保護者 太郎',
@@ -90,23 +91,25 @@ test('invite registration requires a valid invite and explicit guardian consent'
     }
 
     const otherwiseValid = {
-        inviteToken: VALID_INVITE_TOKEN,
+        accessToken: VALID_ACCESS_TOKEN,
+        athleteName: '選手 一郎',
         loginId: 'invited_swimmer',
         password: 'safe-pass-2026',
         guardianName: '保護者 太郎',
         guardianRelationship: '父',
     };
-    assert.equal(parseInviteRegistrationInput(otherwiseValid).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...otherwiseValid, guardianConsent: false }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...otherwiseValid, guardianConsent: 'true' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...otherwiseValid, inviteToken: '' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...otherwiseValid, inviteToken: 'A'.repeat(42) }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...otherwiseValid, inviteToken: `${'A'.repeat(42)}=` }).ok, false);
+    assert.equal(parseSharedRegistrationInput(otherwiseValid).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, guardianConsent: false }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, guardianConsent: 'true' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: '' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: 'A'.repeat(42) }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...otherwiseValid, accessToken: `${'A'.repeat(42)}=` }).ok, false);
 });
 
-test('invite registration rejects account overrides and oversized guardian details', () => {
+test('shared registration rejects account overrides and oversized details', () => {
     const valid = {
-        inviteToken: VALID_INVITE_TOKEN,
+        accessToken: VALID_ACCESS_TOKEN,
+        athleteName: '選手 一郎',
         loginId: 'invited_swimmer',
         password: 'safe-pass-2026',
         guardianName: '保護者 太郎',
@@ -114,33 +117,25 @@ test('invite registration rejects account overrides and oversized guardian detai
         guardianConsent: true,
     };
 
-    // The athlete display name is controlled by the invitation, not by the registrant.
-    assert.equal(parseInviteRegistrationInput({ ...valid, displayName: '別の選手名' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...valid, role: 'ADMIN' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...valid, loginId: 'x' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({ ...valid, password: 'short' }).ok, false);
-    assert.equal(parseInviteRegistrationInput({
+    assert.equal(parseSharedRegistrationInput({ ...valid, displayName: '別の選手名' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, role: 'ADMIN' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, isActive: false }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, membershipStatus: 'WITHDRAWN' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, noticeVersion: 'old' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, loginId: 'x' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({ ...valid, password: 'short' }).ok, false);
+    assert.equal(parseSharedRegistrationInput({
+        ...valid,
+        athleteName: '泳'.repeat(MAX_DISPLAY_NAME_LENGTH + 1),
+    }).ok, false);
+    assert.equal(parseSharedRegistrationInput({
         ...valid,
         guardianName: '保'.repeat(MAX_GUARDIAN_NAME_LENGTH + 1),
     }).ok, false);
-    assert.equal(parseInviteRegistrationInput({
+    assert.equal(parseSharedRegistrationInput({
         ...valid,
         guardianRelationship: '保'.repeat(MAX_GUARDIAN_RELATIONSHIP_LENGTH + 1),
     }).ok, false);
-});
-
-test('invite creation accepts only one bounded athlete name', () => {
-    const valid = parseInviteCreateInput({ athleteName: ' 選手 一郎 ' });
-    assert.equal(valid.ok, true);
-    if (valid.ok) assert.deepEqual(valid.value, { athleteName: '選手 一郎' });
-
-    assert.equal(parseInviteCreateInput({}).ok, false);
-    assert.equal(parseInviteCreateInput({ athleteName: '   ' }).ok, false);
-    assert.equal(parseInviteCreateInput({ athleteName: 123 }).ok, false);
-    assert.equal(parseInviteCreateInput({
-        athleteName: '泳'.repeat(MAX_DISPLAY_NAME_LENGTH + 1),
-    }).ok, false);
-    assert.equal(parseInviteCreateInput({ athleteName: '選手', expiresAt: '2099-01-01' }).ok, false);
 });
 
 test('login validation preserves access for credentials created before current limits', () => {

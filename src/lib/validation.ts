@@ -15,7 +15,7 @@ import {
   MAX_STORY_NOTE_LENGTH,
   MAX_STORY_VERSIONS,
 } from './limits';
-import { isRegistrationInviteToken } from './registration-invite';
+import { isSharedRegistrationToken } from './shared-registration';
 
 const LOGIN_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{2,63}$/u;
 const QUESTION_NUMBERS = new Set(Array.from({ length: 15 }, (_, index) => index + 1));
@@ -129,19 +129,21 @@ export function parseAccountInput(
   return success({ loginId, displayName, password });
 }
 
-export interface InviteRegistrationInput {
-  inviteToken: string;
+export interface SharedRegistrationInput {
+  accessToken: string;
+  athleteName: string;
   loginId: string;
   password: string;
   guardianName: string;
   guardianRelationship: string;
 }
 
-export function parseInviteRegistrationInput(
+export function parseSharedRegistrationInput(
   body: Record<string, unknown>,
-): ValidationResult<InviteRegistrationInput> {
+): ValidationResult<SharedRegistrationInput> {
   const allowedFields = new Set([
-    'inviteToken',
+    'accessToken',
+    'athleteName',
     'loginId',
     'password',
     'guardianName',
@@ -152,17 +154,21 @@ export function parseInviteRegistrationInput(
     return failure('リクエストの形式が正しくありません');
   }
 
-  const inviteToken = body.inviteToken;
+  const accessToken = body.accessToken;
+  const athleteName = normalizeRequiredString(body.athleteName);
   const loginId = normalizeRequiredString(body.loginId);
   const password = typeof body.password === 'string' ? body.password : '';
   const guardianName = normalizeRequiredString(body.guardianName);
   const guardianRelationship = normalizeRequiredString(body.guardianRelationship);
 
-  if (!isRegistrationInviteToken(inviteToken)) {
-    return failure('この登録URLは利用できません。管理者へ再発行を依頼してください');
+  if (!isSharedRegistrationToken(accessToken)) {
+    return failure('この登録URLは利用できません。管理者から届いた最新のURLを開いてください');
   }
-  if (!loginId || !password || !guardianName || !guardianRelationship) {
-    return failure('ログイン情報と保護者情報を入力してください');
+  if (!athleteName || !loginId || !password || !guardianName || !guardianRelationship) {
+    return failure('選手名、ログイン情報、保護者情報を入力してください');
+  }
+  if (athleteName.length > MAX_DISPLAY_NAME_LENGTH) {
+    return failure(`選手名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください`);
   }
   if (!LOGIN_ID_PATTERN.test(loginId)) {
     return failure('ログインIDは3〜64文字の文字・数字・ピリオド・ハイフン・アンダースコアで入力してください');
@@ -180,26 +186,13 @@ export function parseInviteRegistrationInput(
   }
 
   return success({
-    inviteToken,
+    accessToken,
+    athleteName,
     loginId,
     password,
     guardianName,
     guardianRelationship,
   });
-}
-
-export function parseInviteCreateInput(
-  body: Record<string, unknown>,
-): ValidationResult<{ athleteName: string }> {
-  if (Object.keys(body).some((key) => key !== 'athleteName')) {
-    return failure('リクエストの形式が正しくありません');
-  }
-  const athleteName = normalizeRequiredString(body.athleteName);
-  if (!athleteName) return failure('選手名を入力してください');
-  if (athleteName.length > MAX_DISPLAY_NAME_LENGTH) {
-    return failure(`選手名は${MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください`);
-  }
-  return success({ athleteName });
 }
 
 export interface DailyLogInput {

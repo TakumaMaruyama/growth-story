@@ -28,43 +28,9 @@ interface UserPage {
     error?: string;
 }
 
-interface InviteListItem {
-    id: string;
-    athleteName: string;
-    expiresAt: string;
-    usedAt: string | null;
-    revokedAt: string | null;
-    createdAt: string;
-    usedBy: { displayName: string } | null;
-}
-
-interface InvitePage {
-    invites?: InviteListItem[];
+interface RegistrationLinkResponse {
+    fragment?: string;
     error?: string;
-}
-
-function formatDateTime(value: string): string {
-    return new Intl.DateTimeFormat('ja-JP', {
-        timeZone: 'Asia/Tokyo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value));
-}
-
-function inviteStatus(invite: InviteListItem, now: number): {
-    label: string;
-    className: string;
-    canRevoke: boolean;
-} {
-    if (invite.usedAt) return { label: '登録済み', className: 'badge-primary', canRevoke: false };
-    if (invite.revokedAt) return { label: '停止済み', className: 'badge-secondary', canRevoke: false };
-    if (new Date(invite.expiresAt).getTime() <= now) {
-        return { label: '期限切れ', className: 'badge-secondary', canRevoke: false };
-    }
-    return { label: '利用可能', className: 'badge-primary', canRevoke: true };
 }
 
 export default function AdminUsersPage() {
@@ -78,16 +44,10 @@ export default function AdminUsersPage() {
     const [retryCursor, setRetryCursor] = useState<string | null>(null);
     const [retryAppend, setRetryAppend] = useState(false);
 
-    const [invites, setInvites] = useState<InviteListItem[]>([]);
-    const [inviteStatusTime, setInviteStatusTime] = useState(0);
-    const [invitesLoading, setInvitesLoading] = useState(true);
-    const [inviteListError, setInviteListError] = useState('');
-    const [athleteName, setAthleteName] = useState('');
-    const [creatingInvite, setCreatingInvite] = useState(false);
-    const [inviteError, setInviteError] = useState('');
-    const [newInviteUrl, setNewInviteUrl] = useState('');
+    const [registrationUrl, setRegistrationUrl] = useState('');
+    const [registrationLinkLoading, setRegistrationLinkLoading] = useState(true);
+    const [registrationLinkError, setRegistrationLinkError] = useState('');
     const [copyMessage, setCopyMessage] = useState('');
-    const [pendingInviteIds, setPendingInviteIds] = useState<Set<string>>(() => new Set());
 
     const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
     const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
@@ -132,97 +92,39 @@ export default function AdminUsersPage() {
         }
     }, [redirectForAuthorization]);
 
-    const fetchInvites = useCallback(async () => {
-        setInvitesLoading(true);
-        setInviteListError('');
+    const fetchRegistrationLink = useCallback(async () => {
+        setRegistrationLinkLoading(true);
+        setRegistrationLinkError('');
         try {
-            const response = await fetch('/api/admin/registration-invites', { cache: 'no-store' });
-            const data = await response.json().catch(() => null) as InvitePage | null;
+            const response = await fetch('/api/admin/registration-link', { cache: 'no-store' });
+            const data = await response.json().catch(() => null) as RegistrationLinkResponse | null;
             if (redirectForAuthorization(response.status)) return;
-            if (!response.ok || !Array.isArray(data?.invites)) {
-                setInviteListError(data?.error ?? '登録URLの一覧を読み込めませんでした');
+            if (!response.ok || typeof data?.fragment !== 'string') {
+                setRegistrationLinkError(data?.error ?? '共通登録URLを読み込めませんでした');
                 return;
             }
-            setInvites(data.invites);
-            setInviteStatusTime(Date.now());
+            setRegistrationUrl(`${window.location.origin}/register#${data.fragment}`);
         } catch {
-            setInviteListError('通信を確認して、登録URLを再読み込みしてください');
+            setRegistrationLinkError('通信を確認して、共通登録URLを再読み込みしてください');
         } finally {
-            setInvitesLoading(false);
+            setRegistrationLinkLoading(false);
         }
     }, [redirectForAuthorization]);
 
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             void fetchUsers();
-            void fetchInvites();
+            void fetchRegistrationLink();
         }, 0);
         return () => window.clearTimeout(timeout);
-    }, [fetchInvites, fetchUsers]);
+    }, [fetchRegistrationLink, fetchUsers]);
 
-    const handleCreateInvite = async (event: React.FormEvent) => {
-        event.preventDefault();
-        setInviteError('');
-        setNewInviteUrl('');
-        setCopyMessage('');
-        setCreatingInvite(true);
+    const copyRegistrationUrl = async () => {
         try {
-            const response = await fetch('/api/admin/registration-invites', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ athleteName }),
-            });
-            const data = await response.json().catch(() => null) as {
-                token?: string;
-                error?: string;
-            } | null;
-            if (redirectForAuthorization(response.status)) return;
-            if (!response.ok || typeof data?.token !== 'string') {
-                setInviteError(data?.error ?? '登録URLを発行できませんでした');
-                return;
-            }
-            setNewInviteUrl(`${window.location.origin}/register?invite=${encodeURIComponent(data.token)}`);
-            setAthleteName('');
-            await fetchInvites();
-        } catch {
-            setInviteError('通信を確認して、もう一度お試しください');
-        } finally {
-            setCreatingInvite(false);
-        }
-    };
-
-    const copyInviteUrl = async () => {
-        try {
-            await navigator.clipboard.writeText(newInviteUrl);
-            setCopyMessage('登録URLをコピーしました');
+            await navigator.clipboard.writeText(registrationUrl);
+            setCopyMessage('共通登録URLをコピーしました');
         } catch {
             setCopyMessage('URL欄を選択してコピーしてください');
-        }
-    };
-
-    const revokeInvite = async (invite: InviteListItem) => {
-        if (!window.confirm(`${invite.athleteName}さんの登録URLを停止しますか？`)) return;
-        setPendingInviteIds((current) => new Set(current).add(invite.id));
-        setInviteListError('');
-        try {
-            const response = await fetch(`/api/admin/registration-invites/${invite.id}`, {
-                method: 'DELETE',
-            });
-            const data = await response.json().catch(() => null) as { error?: string } | null;
-            if (redirectForAuthorization(response.status)) return;
-            if (!response.ok) {
-                setInviteListError(data?.error ?? '登録URLを停止できませんでした');
-                return;
-            }
-            await fetchInvites();
-        } catch {
-            setInviteListError('通信を確認して、もう一度お試しください');
-        } finally {
-            setPendingInviteIds((current) => {
-                const next = new Set(current);
-                next.delete(invite.id);
-                return next;
-            });
         }
     };
 
@@ -313,105 +215,53 @@ export default function AdminUsersPage() {
                     <div>
                         <p className="eyebrow">Administration</p>
                         <h1 className="page-title">会員管理</h1>
-                        <p className="muted">保護者へ送る登録URLと、会員の利用状態を管理します。</p>
+                        <p className="muted">保護者へ送る共通登録URLと、会員の利用状態を管理します。</p>
                     </div>
                 </div>
 
-                <section className="card" aria-labelledby="create-invite-heading">
-                    <h2 id="create-invite-heading" className="section-title">会員登録URLを発行</h2>
-                    <p className="muted">URLは1選手につき1回だけ利用でき、発行から7日で期限切れになります。</p>
-                    <form onSubmit={handleCreateInvite}>
-                        <div className="form-group">
-                            <label htmlFor="athleteName" className="form-label">選手名</label>
-                            <input
-                                type="text"
-                                id="athleteName"
-                                className="form-input"
-                                value={athleteName}
-                                onChange={(event) => setAthleteName(event.target.value)}
-                                required
-                                maxLength={80}
-                                disabled={creatingInvite}
-                            />
+                <section className="card" aria-labelledby="registration-link-heading">
+                    <h2 id="registration-link-heading" className="section-title">共通の会員登録URL</h2>
+                    <p className="muted">
+                        このURLは全選手共通で、何人でも登録できます。管理者から案内を受けた保護者だけに送ってください。
+                    </p>
+                    <div className="alert alert-info">
+                        <p>選手名は登録時に保護者が入力します。選手ごとのURL発行は不要です。</p>
+                        <p>登録済み・退会済みの選手は同じ名前で再登録できません。利用再開は会員一覧から行ってください。</p>
+                        <p className="muted">URLが意図せず共有された場合は、Replitの `REGISTRATION_ACCESS_TOKEN` を更新して再公開すると、以前のURLを一括で無効にできます。</p>
+                    </div>
+                    {registrationLinkError && (
+                        <div className="alert alert-danger" role="alert">
+                            <p>{registrationLinkError}</p>
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-small"
+                                onClick={() => void fetchRegistrationLink()}
+                                disabled={registrationLinkLoading}
+                            >
+                                再試行
+                            </button>
                         </div>
-                        {inviteError && <p className="error-message" role="alert">{inviteError}</p>}
-                        <button type="submit" className="btn btn-primary" disabled={creatingInvite}>
-                            {creatingInvite ? '発行中…' : '登録URLを発行'}
-                        </button>
-                    </form>
-
-                    {newInviteUrl && (
-                        <div className="alert alert-info" style={{ marginTop: '1rem' }}>
-                            <p><strong>このURLを保護者へ送ってください。</strong></p>
-                            <p className="muted">安全のため、同じURLはこの画面を離れると再表示できません。</p>
-                            <label htmlFor="newInviteUrl" className="form-label">登録URL</label>
+                    )}
+                    {registrationLinkLoading ? (
+                        <div className="loading-state" role="status">共通登録URLを読み込んでいます…</div>
+                    ) : registrationUrl ? (
+                        <div className="form-group">
+                            <label htmlFor="registrationUrl" className="form-label">保護者へ送るURL</label>
                             <input
-                                id="newInviteUrl"
+                                id="registrationUrl"
                                 className="form-input"
-                                value={newInviteUrl}
+                                value={registrationUrl}
                                 readOnly
                                 onFocus={(event) => event.currentTarget.select()}
                             />
                             <div className="button-row" style={{ marginTop: '0.75rem' }}>
-                                <button type="button" className="btn btn-secondary" onClick={() => void copyInviteUrl()}>
-                                    URLをコピー
+                                <button type="button" className="btn btn-primary" onClick={() => void copyRegistrationUrl()}>
+                                    共通URLをコピー
                                 </button>
                                 {copyMessage && <span role="status">{copyMessage}</span>}
                             </div>
                         </div>
-                    )}
-                </section>
-
-                <section className="card" aria-labelledby="invites-heading">
-                    <h2 id="invites-heading" className="section-title">発行済み登録URL</h2>
-                    {inviteListError && <p className="error-message" role="alert">{inviteListError}</p>}
-                    {invitesLoading ? (
-                        <div className="loading-state" role="status">読み込み中…</div>
-                    ) : invites.length > 0 ? (
-                        <div className="table-wrap">
-                            <table className="table">
-                                <caption className="visually-hidden">発行済み登録URL</caption>
-                                <thead>
-                                    <tr>
-                                        <th scope="col">選手名</th>
-                                        <th scope="col">状態</th>
-                                        <th scope="col">期限・登録者</th>
-                                        <th scope="col">操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {invites.map((invite) => {
-                                        const status = inviteStatus(invite, inviteStatusTime);
-                                        return (
-                                            <tr key={invite.id}>
-                                                <td>{invite.athleteName}</td>
-                                                <td><span className={`badge ${status.className}`}>{status.label}</span></td>
-                                                <td>
-                                                    {invite.usedBy
-                                                        ? `${invite.usedBy.displayName}さんが登録`
-                                                        : `${formatDateTime(invite.expiresAt)}まで`}
-                                                </td>
-                                                <td>
-                                                    {status.canRevoke ? (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-danger btn-small"
-                                                            onClick={() => void revokeInvite(invite)}
-                                                            disabled={pendingInviteIds.has(invite.id)}
-                                                        >
-                                                            {pendingInviteIds.has(invite.id) ? '停止中…' : 'URLを停止'}
-                                                        </button>
-                                                    ) : <span className="muted">操作なし</span>}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <p className="empty-state">発行済みの登録URLはありません。</p>
-                    )}
+                    ) : null}
                 </section>
 
                 <section className="card" aria-labelledby="users-heading">

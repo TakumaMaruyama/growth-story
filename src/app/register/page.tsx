@@ -8,23 +8,25 @@ import {
     GUARDIAN_CONSENT_NOTICE,
 } from '@/lib/guardian-consent';
 import {
+    MAX_DISPLAY_NAME_LENGTH,
     MAX_GUARDIAN_NAME_LENGTH,
     MAX_GUARDIAN_RELATIONSHIP_LENGTH,
     MIN_USER_PASSWORD_LENGTH,
 } from '@/lib/limits';
 import { loginHref, sanitizeReturnPath } from '@/lib/return-path';
 
-type InviteState =
+type RegistrationLinkState =
     | { status: 'loading' }
     | { status: 'invalid'; error: string }
-    | { status: 'valid'; athleteName: string; expiresAt: string };
+    | { status: 'valid' };
 
 function RegisterPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const returnTo = sanitizeReturnPath(searchParams.get('next'), 'user');
-    const inviteToken = searchParams.get('invite') ?? '';
-    const [inviteState, setInviteState] = useState<InviteState>({ status: 'loading' });
+    const [registrationLinkState, setRegistrationLinkState] = useState<RegistrationLinkState>({ status: 'loading' });
+    const [accessToken, setAccessToken] = useState('');
+    const [athleteName, setAthleteName] = useState('');
     const [loginId, setLoginId] = useState('');
     const [guardianName, setGuardianName] = useState('');
     const [guardianRelationship, setGuardianRelationship] = useState('');
@@ -35,65 +37,84 @@ function RegisterPageContent() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        const controller = new AbortController();
-        if (!inviteToken) {
-            const timeout = window.setTimeout(() => {
-                setInviteState({
-                    status: 'invalid',
-                    error: '会員登録には、管理者から送られた登録URLが必要です。',
-                });
-            }, 0);
-            return () => {
-                window.clearTimeout(timeout);
-                controller.abort();
-            };
-        }
+        let controller = new AbortController();
+        let timeout: number | undefined;
 
-        const validateInvite = async () => {
-            setInviteState({ status: 'loading' });
+        const validateRegistrationLink = async (token: string, signal: AbortSignal) => {
             try {
-                const response = await fetch(
-                    `/api/auth/register?invite=${encodeURIComponent(inviteToken)}`,
-                    { cache: 'no-store', signal: controller.signal },
-                );
+                const response = await fetch('/api/auth/register/access', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accessToken: token }),
+                    cache: 'no-store',
+                    signal,
+                });
                 const data = await response.json().catch(() => null) as {
-                    athleteName?: string;
-                    expiresAt?: string;
+                    available?: boolean;
                     error?: string;
                 } | null;
-                if (
-                    !response.ok
-                    || typeof data?.athleteName !== 'string'
-                    || typeof data.expiresAt !== 'string'
-                ) {
-                    setInviteState({
+                if (!response.ok || data?.available !== true) {
+                    setRegistrationLinkState({
                         status: 'invalid',
-                        error: data?.error ?? 'この登録URLは利用できません。管理者へ再発行を依頼してください。',
+                        error: data?.error ?? 'この登録URLは利用できません。管理者から届いた最新のURLを開いてください。',
                     });
                     return;
                 }
-                setInviteState({
-                    status: 'valid',
-                    athleteName: data.athleteName,
-                    expiresAt: data.expiresAt,
-                });
+                setRegistrationLinkState({ status: 'valid' });
             } catch (fetchError) {
                 if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
-                setInviteState({
+                setRegistrationLinkState({
                     status: 'invalid',
                     error: '登録URLを確認できませんでした。通信を確認して、もう一度お試しください。',
                 });
             }
         };
 
-        void validateInvite();
-        return () => controller.abort();
-    }, [inviteToken]);
+        const readRegistrationLink = () => {
+            controller.abort();
+            controller = new AbortController();
+            const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+            const token = fragment.get('access') ?? '';
+
+            // The shared bearer token is read from the URL fragment so it never reaches
+            // access logs or Referer headers, then removed from the address bar.
+            window.history.replaceState(
+                null,
+                '',
+                `${window.location.pathname}${window.location.search}`,
+            );
+
+            setAccessToken('');
+            if (!token) {
+                setRegistrationLinkState({
+                    status: 'invalid',
+                    error: '会員登録には、管理者から送られた共通登録URLが必要です。',
+                });
+                return;
+            }
+            setRegistrationLinkState({ status: 'loading' });
+            setAccessToken(token);
+            void validateRegistrationLink(token, controller.signal);
+        };
+
+        const scheduleRegistrationLinkRead = () => {
+            if (timeout !== undefined) window.clearTimeout(timeout);
+            timeout = window.setTimeout(readRegistrationLink, 0);
+        };
+
+        window.addEventListener('hashchange', scheduleRegistrationLinkRead);
+        scheduleRegistrationLinkRead();
+        return () => {
+            window.removeEventListener('hashchange', scheduleRegistrationLinkRead);
+            if (timeout !== undefined) window.clearTimeout(timeout);
+            controller.abort();
+        };
+    }, []);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
         setError('');
-        if (inviteState.status !== 'valid') return;
+        if (registrationLinkState.status !== 'valid') return;
         if (!guardianConsent) {
             setError('登録前の内容を確認し、保護者として同意してください');
             return;
@@ -109,7 +130,8 @@ function RegisterPageContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    inviteToken,
+                    accessToken,
+                    athleteName,
                     loginId,
                     guardianName,
                     guardianRelationship,
@@ -121,9 +143,9 @@ function RegisterPageContent() {
             if (!response.ok) {
                 setError(data?.error ?? 'アカウントを作成できませんでした');
                 if (response.status === 410) {
-                    setInviteState({
+                    setRegistrationLinkState({
                         status: 'invalid',
-                        error: data?.error ?? 'この登録URLは利用できません。管理者へ再発行を依頼してください。',
+                        error: data?.error ?? 'この登録URLは利用できません。管理者から届いた最新のURLを開いてください。',
                     });
                 }
                 return;
@@ -147,11 +169,11 @@ function RegisterPageContent() {
                     <p className="muted">練習日誌、大会目標、競泳物語を始めましょう。</p>
                 </div>
 
-                {inviteState.status === 'loading' ? (
+                {registrationLinkState.status === 'loading' ? (
                     <div className="card loading-state" role="status">登録URLを確認しています…</div>
-                ) : inviteState.status === 'invalid' ? (
+                ) : registrationLinkState.status === 'invalid' ? (
                     <div className="card" role="alert">
-                        <p className="error-message">{inviteState.error}</p>
+                        <p className="error-message">{registrationLinkState.error}</p>
                         <div className="auth-links">
                             <Link href={loginHref(returnTo, 'user')}>ログインへ戻る</Link>
                         </div>
@@ -160,6 +182,8 @@ function RegisterPageContent() {
                     <div className="card">
                         <div className="alert alert-info" aria-labelledby="registration-notice-heading">
                             <h2 id="registration-notice-heading" className="section-title">登録前にご確認ください</h2>
+                            <p>管理者から案内を受けた保護者のみ登録できます。選手名を正確に入力してください。</p>
+                            <p>すでに登録済み、または退会した選手は新規登録せず、管理者へ利用再開を依頼してください。</p>
                             {GUARDIAN_CONSENT_NOTICE.map((paragraph) => (
                                 <p key={paragraph}>{paragraph}</p>
                             ))}
@@ -172,10 +196,14 @@ function RegisterPageContent() {
                                     type="text"
                                     id="athleteName"
                                     className="form-input"
-                                    value={inviteState.athleteName}
-                                    readOnly
-                                    aria-readonly="true"
+                                    value={athleteName}
+                                    onChange={(event) => setAthleteName(event.target.value)}
+                                    required
+                                    maxLength={MAX_DISPLAY_NAME_LENGTH}
+                                    autoComplete="off"
+                                    disabled={loading}
                                 />
+                                <p className="form-help">{athleteName.length}/{MAX_DISPLAY_NAME_LENGTH}文字</p>
                             </div>
 
                             <div className="form-group">
