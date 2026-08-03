@@ -113,6 +113,7 @@ export default function LoginForm({ adminOnly = false, returnTo = null }: LoginF
                         ) : (
                             <>
                                 <span className="muted">会員登録は、管理者から保護者へ案内された共通登録URLから行ってください。</span>
+                                <Link href="/forgot-password">パスワードを忘れた方</Link>
                                 <Link href={loginHref(null, 'admin')}>管理者ログイン</Link>
                             </>
                         )}

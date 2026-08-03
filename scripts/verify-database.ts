@@ -17,6 +17,7 @@ async function main() {
         'admin_audit_events',
         'registration_invites',
         'guardian_consents',
+        'password_reset_tokens',
     ];
     const archivedTables = ['archived_growth_profiles', 'archived_growth_measurements'];
     const removedTables = ['growth_profiles', 'growth_measurements'];
@@ -162,6 +163,30 @@ async function main() {
         }
     }
 
+    const passwordResetColumns = await pool.query<{ column_name: string }>(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'password_reset_tokens'`,
+    );
+    const passwordResetColumnNames = new Set(
+        passwordResetColumns.rows.map((row) => row.column_name),
+    );
+    const requiredPasswordResetColumns = [
+        'id',
+        'user_id',
+        'created_by_id',
+        'token_hash',
+        'expires_at',
+        'used_at',
+        'revoked_at',
+        'created_at',
+    ];
+    for (const column of requiredPasswordResetColumns) {
+        if (!passwordResetColumnNames.has(column)) {
+            throw new Error(`password_reset_tokens.${column} is missing`);
+        }
+    }
+
     const dailyColumns = await pool.query<{ column_name: string }>(
         `SELECT column_name
            FROM information_schema.columns
@@ -220,9 +245,14 @@ async function main() {
         'registration_invites_athlete_name_check',
         'registration_invites_state_check',
         'guardian_consents_text_length_check',
+        'password_reset_tokens_token_hash_check',
+        'password_reset_tokens_lifetime_check',
+        'password_reset_tokens_state_check',
         'registration_invites_created_by_id_fkey',
         'registration_invites_used_by_user_id_fkey',
         'guardian_consents_user_id_fkey',
+        'password_reset_tokens_user_id_fkey',
+        'password_reset_tokens_created_by_id_fkey',
     ];
     const constraints = await pool.query<{ conname: string }>(
         `SELECT conname
@@ -242,6 +272,9 @@ async function main() {
         'registration_invites_athlete_name_check',
         'registration_invites_state_check',
         'guardian_consents_text_length_check',
+        'password_reset_tokens_token_hash_check',
+        'password_reset_tokens_lifetime_check',
+        'password_reset_tokens_state_check',
     ];
     const validatedConstraints = await pool.query<{ conname: string; convalidated: boolean }>(
         `SELECT conname, convalidated
@@ -265,6 +298,9 @@ async function main() {
         ['registration_invites_expires_at_idx', false],
         ['guardian_consents_user_id_key', true],
         ['guardian_consents_accepted_at_idx', false],
+        ['password_reset_tokens_token_hash_key', true],
+        ['password_reset_tokens_user_id_created_at_idx', false],
+        ['password_reset_tokens_expires_at_idx', false],
     ]);
     const indexes = await pool.query<{ index_name: string; is_unique: boolean }>(
         `SELECT index_class.relname AS "index_name", index_data.indisunique AS "is_unique"

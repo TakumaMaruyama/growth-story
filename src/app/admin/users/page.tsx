@@ -35,6 +35,18 @@ interface RegistrationLinkResponse {
     error?: string;
 }
 
+interface PasswordResetLinkResponse {
+    fragment?: string;
+    expiresAt?: string;
+    error?: string;
+}
+
+interface IssuedPasswordResetLink {
+    fullName: string;
+    url: string;
+    expiresAt: string;
+}
+
 export default function AdminUsersPage() {
     const router = useRouter();
     const [adminUser, setAdminUser] = useState<UserInfo | null>(null);
@@ -50,6 +62,8 @@ export default function AdminUsersPage() {
     const [registrationLinkLoading, setRegistrationLinkLoading] = useState(true);
     const [registrationLinkError, setRegistrationLinkError] = useState('');
     const [copyMessage, setCopyMessage] = useState('');
+    const [passwordResetLink, setPasswordResetLink] = useState<IssuedPasswordResetLink | null>(null);
+    const [passwordResetCopyMessage, setPasswordResetCopyMessage] = useState('');
 
     const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
     const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
@@ -127,6 +141,62 @@ export default function AdminUsersPage() {
             setCopyMessage('共通登録URLをコピーしました');
         } catch {
             setCopyMessage('URL欄を選択してコピーしてください');
+        }
+    };
+
+    const copyPasswordResetUrl = async () => {
+        if (!passwordResetLink) return;
+        try {
+            await navigator.clipboard.writeText(passwordResetLink.url);
+            setPasswordResetCopyMessage('再設定URLをコピーしました');
+        } catch {
+            setPasswordResetCopyMessage('URL欄を選択してコピーしてください');
+        }
+    };
+
+    const issuePasswordResetLink = async (target: UserListItem) => {
+        if (!window.confirm(
+            `${target.fullName}さんの本人・保護者確認は完了していますか？\n再設定URLは2日間有効で、発行済みの古いURLは無効になります。`,
+        )) return;
+
+        setPendingUserIds((current) => new Set(current).add(target.id));
+        setToggleErrors((current) => {
+            const next = { ...current };
+            delete next[target.id];
+            return next;
+        });
+        setPasswordResetCopyMessage('');
+        try {
+            const response = await fetch(`/api/admin/users/${target.id}/password-reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const data = await response.json().catch(() => null) as PasswordResetLinkResponse | null;
+            if (redirectForAuthorization(response.status)) return;
+            if (!response.ok || typeof data?.fragment !== 'string' || typeof data.expiresAt !== 'string') {
+                setToggleErrors((current) => ({
+                    ...current,
+                    [target.id]: data?.error ?? '再設定URLを発行できませんでした',
+                }));
+                return;
+            }
+            setPasswordResetLink({
+                fullName: target.fullName,
+                url: `${window.location.origin}/reset-password#${data.fragment}`,
+                expiresAt: data.expiresAt,
+            });
+        } catch {
+            setToggleErrors((current) => ({
+                ...current,
+                [target.id]: '通信を確認して、もう一度お試しください',
+            }));
+        } finally {
+            setPendingUserIds((current) => {
+                const next = new Set(current);
+                next.delete(target.id);
+                return next;
+            });
         }
     };
 
@@ -266,6 +336,57 @@ export default function AdminUsersPage() {
                     ) : null}
                 </section>
 
+                {passwordResetLink && (
+                    <section className="card" aria-labelledby="password-reset-link-heading">
+                        <div className="page-header">
+                            <div>
+                                <h2 id="password-reset-link-heading" className="section-title">
+                                    {passwordResetLink.fullName}さんのパスワード再設定URL
+                                </h2>
+                                <p className="muted">
+                                    発行から2日間、1回だけ使用できます。新しく発行すると以前のURLは無効になります。
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-small"
+                                onClick={() => {
+                                    setPasswordResetLink(null);
+                                    setPasswordResetCopyMessage('');
+                                }}
+                            >
+                                閉じる
+                            </button>
+                        </div>
+                        <div className="alert alert-info">
+                            <p>本人・保護者確認を行った相手にだけ、安全な連絡手段で送ってください。</p>
+                            <p>
+                                有効期限：{new Date(passwordResetLink.expiresAt).toLocaleString('ja-JP', {
+                                    timeZone: 'Asia/Tokyo',
+                                    dateStyle: 'long',
+                                    timeStyle: 'short',
+                                })}
+                            </p>
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="passwordResetUrl" className="form-label">保護者へ送るURL</label>
+                            <input
+                                id="passwordResetUrl"
+                                className="form-input"
+                                value={passwordResetLink.url}
+                                readOnly
+                                onFocus={(event) => event.currentTarget.select()}
+                            />
+                            <div className="button-row" style={{ marginTop: '0.75rem' }}>
+                                <button type="button" className="btn btn-primary" onClick={() => void copyPasswordResetUrl()}>
+                                    再設定URLをコピー
+                                </button>
+                                {passwordResetCopyMessage && <span role="status">{passwordResetCopyMessage}</span>}
+                            </div>
+                        </div>
+                    </section>
+                )}
+
                 <section className="card" aria-labelledby="users-heading">
                     <h2 id="users-heading" className="section-title">会員一覧</h2>
                     {loadError && (
@@ -328,6 +449,14 @@ export default function AdminUsersPage() {
                                                         </Link>
                                                         {target.role !== 'ADMIN' && (
                                                             <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void issuePasswordResetLink(target)}
+                                                                    className="btn btn-secondary btn-small"
+                                                                    disabled={pendingUserIds.has(target.id) || !target.isActive}
+                                                                >
+                                                                    再設定URL
+                                                                </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => void toggleMembership(target)}

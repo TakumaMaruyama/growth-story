@@ -101,6 +101,7 @@ async function main() {
     await applyMigration(migrationPool, '20260803000100_pause_daily_activity_check');
     await applyMigration(migrationPool, '20260803000200_restore_daily_activity_check');
     await applyMigration(migrationPool, '20260803000300_user_real_name');
+    await applyMigration(migrationPool, '20260804000000_password_reset_tokens');
 
     const legacyMembership = await migrationPool.query<{
         membership_status: string;
@@ -197,6 +198,58 @@ async function main() {
         migrationPool.query(
             `UPDATE "users" SET "given_name" = NULL WHERE "id" = $1`,
             [registeredUserId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+
+    const resetTokenId = randomUUID();
+    await migrationPool.query(
+        `INSERT INTO "password_reset_tokens"
+            ("id", "user_id", "created_by_id", "token_hash", "created_at", "expires_at")
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '2 days')`,
+        [resetTokenId, registeredUserId, adminId, 'c'.repeat(64)],
+    );
+    const migratedResetToken = await migrationPool.query<{
+        user_id: string;
+        created_by_id: string;
+        used_at: Date | null;
+        revoked_at: Date | null;
+    }>(
+        `SELECT "user_id", "created_by_id", "used_at", "revoked_at"
+           FROM "password_reset_tokens"
+          WHERE "id" = $1`,
+        [resetTokenId],
+    );
+    assert.deepEqual(migratedResetToken.rows, [{
+        user_id: registeredUserId,
+        created_by_id: adminId,
+        used_at: null,
+        revoked_at: null,
+    }]);
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "password_reset_tokens"
+                ("id", "user_id", "created_by_id", "token_hash", "expires_at")
+             VALUES ($1, $2, $3, 'not-a-sha256-hash', CURRENT_TIMESTAMP + INTERVAL '1 day')`,
+            [randomUUID(), registeredUserId, adminId],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `INSERT INTO "password_reset_tokens"
+                ("id", "user_id", "created_by_id", "token_hash", "created_at", "expires_at")
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '2 days 1 second')`,
+            [randomUUID(), registeredUserId, adminId, 'd'.repeat(64)],
+        ),
+        (error: unknown) => postgresErrorCode(error) === '23514',
+    );
+    await assert.rejects(
+        migrationPool.query(
+            `UPDATE "password_reset_tokens"
+                SET "used_at" = CURRENT_TIMESTAMP, "revoked_at" = CURRENT_TIMESTAMP
+              WHERE "id" = $1`,
+            [resetTokenId],
         ),
         (error: unknown) => postgresErrorCode(error) === '23514',
     );

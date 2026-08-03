@@ -31,6 +31,8 @@ model User {
   guardianConsent            GuardianConsent?
   registrationInvitesCreated RegistrationInvite[] @relation("RegistrationInviteCreator")
   registrationInviteUsed     RegistrationInvite?  @relation("RegistrationInviteRegistrant")
+  passwordResetTokens        PasswordResetToken[]  @relation("PasswordResetTarget")
+  passwordResetTokensCreated PasswordResetToken[]  @relation("PasswordResetCreator")
   adminActions               AdminAuditEvent[]     @relation("AdminAuditActor")
   auditTargets               AdminAuditEvent[]     @relation("AdminAuditTarget")
 
@@ -183,6 +185,24 @@ model GuardianConsent {
 
   @@index([acceptedAt(sort: Desc)])
   @@map("guardian_consents")
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  createdById String    @map("created_by_id")
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user      User @relation("PasswordResetTarget", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User @relation("PasswordResetCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model AdminAuditEvent {
