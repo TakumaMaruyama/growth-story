@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import {
     GUARDIAN_CONSENT_LABEL,
     GUARDIAN_CONSENT_NOTICE,
@@ -17,7 +17,7 @@ import { loginHref, sanitizeReturnPath } from '@/lib/return-path';
 
 type RegistrationLinkState =
     | { status: 'loading' }
-    | { status: 'invalid'; error: string }
+    | { status: 'invalid'; error: string; retryable: boolean }
     | { status: 'valid' };
 
 function RegisterPageContent() {
@@ -36,39 +36,41 @@ function RegisterPageContent() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
+    const validateRegistrationLink = useCallback(async (token: string, signal?: AbortSignal) => {
+        try {
+            const response = await fetch('/api/auth/register/access', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accessToken: token }),
+                cache: 'no-store',
+                signal,
+            });
+            const data = await response.json().catch(() => null) as {
+                available?: boolean;
+                error?: string;
+            } | null;
+            if (!response.ok || data?.available !== true) {
+                setRegistrationLinkState({
+                    status: 'invalid',
+                    error: data?.error ?? 'この登録URLは利用できません。管理者から届いた最新のURLを開いてください。',
+                    retryable: false,
+                });
+                return;
+            }
+            setRegistrationLinkState({ status: 'valid' });
+        } catch (fetchError) {
+            if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
+            setRegistrationLinkState({
+                status: 'invalid',
+                error: '登録URLを確認できませんでした。通信を確認して、もう一度お試しください。',
+                retryable: true,
+            });
+        }
+    }, []);
+
     useEffect(() => {
         let controller = new AbortController();
         let timeout: number | undefined;
-
-        const validateRegistrationLink = async (token: string, signal: AbortSignal) => {
-            try {
-                const response = await fetch('/api/auth/register/access', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accessToken: token }),
-                    cache: 'no-store',
-                    signal,
-                });
-                const data = await response.json().catch(() => null) as {
-                    available?: boolean;
-                    error?: string;
-                } | null;
-                if (!response.ok || data?.available !== true) {
-                    setRegistrationLinkState({
-                        status: 'invalid',
-                        error: data?.error ?? 'この登録URLは利用できません。管理者から届いた最新のURLを開いてください。',
-                    });
-                    return;
-                }
-                setRegistrationLinkState({ status: 'valid' });
-            } catch (fetchError) {
-                if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
-                setRegistrationLinkState({
-                    status: 'invalid',
-                    error: '登録URLを確認できませんでした。通信を確認して、もう一度お試しください。',
-                });
-            }
-        };
 
         const readRegistrationLink = () => {
             controller.abort();
@@ -89,6 +91,7 @@ function RegisterPageContent() {
                 setRegistrationLinkState({
                     status: 'invalid',
                     error: '会員登録には、管理者から送られた共通登録URLが必要です。',
+                    retryable: false,
                 });
                 return;
             }
@@ -109,7 +112,7 @@ function RegisterPageContent() {
             if (timeout !== undefined) window.clearTimeout(timeout);
             controller.abort();
         };
-    }, []);
+    }, [validateRegistrationLink]);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -146,6 +149,7 @@ function RegisterPageContent() {
                     setRegistrationLinkState({
                         status: 'invalid',
                         error: data?.error ?? 'この登録URLは利用できません。管理者から届いた最新のURLを開いてください。',
+                        retryable: false,
                     });
                 }
                 return;
@@ -174,6 +178,18 @@ function RegisterPageContent() {
                 ) : registrationLinkState.status === 'invalid' ? (
                     <div className="card" role="alert">
                         <p className="error-message">{registrationLinkState.error}</p>
+                        {registrationLinkState.retryable && accessToken && (
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-block"
+                                onClick={() => {
+                                    setRegistrationLinkState({ status: 'loading' });
+                                    void validateRegistrationLink(accessToken);
+                                }}
+                            >
+                                登録URLを再確認
+                            </button>
+                        )}
                         <div className="auth-links">
                             <Link href={loginHref(returnTo, 'user')}>ログインへ戻る</Link>
                         </div>
