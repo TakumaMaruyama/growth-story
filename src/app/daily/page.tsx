@@ -667,7 +667,7 @@ function DailyLogPageContent() {
                                         <FlagIcon aria-hidden="true" size={22} weight="bold" />
                                         {badgeProgress.nextMilestone
                                             ? `次のバッジまであと${badgeProgress.remaining}回`
-                                            : '最高バッジを達成しました'}
+                                            : '最高バッジ「レジェンド」を達成しました'}
                                     </p>
                                     <div
                                         className="milestone-progress-track"
@@ -705,7 +705,7 @@ function DailyLogPageContent() {
                             )}
                             <details className="milestone-guide">
                                 <summary>バッジの色と達成条件を見る</summary>
-                                <p>日誌を残した日数が次の基準に達すると、バッジの色が変わります。</p>
+                                <p>日誌を残した日数が次の基準に達すると、バッジの色が変わります。最終バッジは3,650日（10年）の「レジェンド」です。</p>
                                 <ul className="milestone-guide-list">
                                     {DAILY_LOG_BADGE_DEFINITIONS.map((definition) => {
                                         const earned = definition.milestone <= eligibleRecordCount;

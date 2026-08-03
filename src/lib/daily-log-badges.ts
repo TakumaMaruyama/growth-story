@@ -15,10 +15,7 @@ export const DAILY_LOG_BADGE_DEFINITIONS = Object.freeze([
     { milestone: 2000, name: 'アメジスト', color: '#6d28d9', swatch: 'linear-gradient(135deg, #a78bfa, #6d28d9)', foreground: '#ffffff' },
     { milestone: 2500, name: 'ブロンズ', color: '#92400e', swatch: 'linear-gradient(135deg, #d97706, #78350f)', foreground: '#ffffff' },
     { milestone: 3000, name: 'シルバー', color: '#475569', swatch: 'linear-gradient(135deg, #f1f5f9, #64748b)', foreground: '#0f172a' },
-    { milestone: 3650, name: 'プレミアムゴールド', color: '#a16207', swatch: 'linear-gradient(135deg, #fef08a, #ca8a04, #854d0e)', foreground: '#422006' },
-    { milestone: 5000, name: 'オーロラ', color: '#0f766e', swatch: 'linear-gradient(135deg, #22d3ee, #34d399, #a78bfa, #f472b6)', foreground: '#0f172a' },
-    { milestone: 7300, name: 'レインボー', color: '#7c3aed', swatch: 'linear-gradient(135deg, #ef4444, #f59e0b, #84cc16, #06b6d4, #6366f1, #d946ef)', foreground: '#ffffff' },
-    { milestone: 10000, name: 'レジェンド', color: '#111827', swatch: 'linear-gradient(135deg, #111827, #7c3aed, #f59e0b, #fef3c7)', foreground: '#ffffff' },
+    { milestone: 3650, name: 'レジェンド', color: '#111827', swatch: 'linear-gradient(135deg, #111827, #7c3aed, #f59e0b, #fef3c7)', foreground: '#ffffff' },
 ] as const);
 
 export type DailyLogBadgeDefinition = typeof DAILY_LOG_BADGE_DEFINITIONS[number];
