@@ -8,6 +8,17 @@ import {
     rotatingStoryQuestionNo,
 } from './story-question-navigation';
 
+test('story questions keep the approved growth narrative and routine prompt', () => {
+    const labels = new Map(STORY_QUESTIONS.map((question) => [question.no, question.label]));
+
+    assert.equal(labels.get(4), '競泳で悔しかったことと、そこから学んだことは？');
+    assert.equal(labels.get(5), '好きな、または得意な泳法・種目は？その理由は？');
+    assert.equal(labels.get(7), 'チームで好きな時間や、仲間・コーチから学んだことは？');
+    assert.equal(labels.get(9), '試合前のルーティンは？');
+    assert.equal(labels.get(13), 'いつか競泳を終えるとき、どんな「ラストシーン」を迎えたい？');
+    assert.equal(labels.get(15), '自分を応援してくれている人へ、伝えたいことは？');
+});
+
 test('story question parameter accepts only canonical question numbers', () => {
     assert.equal(parseStoryQuestionParam('1'), 1);
     assert.equal(parseStoryQuestionParam('15'), 15);

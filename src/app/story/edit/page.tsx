@@ -474,6 +474,9 @@ export default function StoryEditPage() {
                             <h2 id={`question-${activeQuestion.no}`} className="question-title">
                                 Q{activeQuestion.no}. {activeQuestion.label}
                             </h2>
+                            <p id={`q${activeQuestion.no}-guidance`} className="form-help">
+                                正解はありません。書きにくい質問は空欄でも大丈夫です。
+                            </p>
                             <textarea
                                 id={`q${activeQuestion.no}`}
                                 className="form-textarea story-question-answer"
@@ -488,7 +491,7 @@ export default function StoryEditPage() {
                                 readOnly={isReadOnly}
                                 aria-label={`Q${activeQuestion.no}の回答`}
                                 aria-invalid={(answers[activeQuestion.no]?.length ?? 0) > MAX_STORY_ANSWER_LENGTH}
-                                aria-describedby={`q${activeQuestion.no}-count`}
+                                aria-describedby={`q${activeQuestion.no}-guidance q${activeQuestion.no}-count`}
                             />
                             <p
                                 id={`q${activeQuestion.no}-count`}
