@@ -120,7 +120,7 @@ test('record calendar and paginated list preserve ownership and JST dates', asyn
                 },
                 {
                     userId: owner.id,
-                    type: 'ANNUAL',
+                    type: 'NEXT_MEET',
                     title: '日付未設定',
                     targetDate: null,
                 },
