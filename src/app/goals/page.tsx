@@ -460,6 +460,9 @@ export default function GoalsPage() {
     const [reloadToken, setReloadToken] = useState(0);
     const discardDraftOnReloadRef = useRef(false);
     const addRequestHandledRef = useRef(false);
+    const focusRequestHandledRef = useRef<string | null>(null);
+    const archivedDetailsRef = useRef<HTMLDetailsElement | null>(null);
+    const [focusedGoalId, setFocusedGoalId] = useState<string | null>(null);
     const isReadOnly = user?.membershipStatus === 'WITHDRAWN';
     const hasLocalChanges = loaded && goalStateKey(forms) !== goalStateKey(baselineForms);
     const dirty = !isReadOnly && hasLocalChanges;
@@ -593,6 +596,34 @@ export default function GoalsPage() {
         });
         return () => window.cancelAnimationFrame(frame);
     }, [isReadOnly, loaded, router]);
+
+    useEffect(() => {
+        if (!loaded) return;
+        const query = new URLSearchParams(window.location.search);
+        const focusId = query.get('focus');
+        if (!focusId || query.get('add') === '1' || focusRequestHandledRef.current === focusId) return;
+        focusRequestHandledRef.current = focusId;
+
+        const isActiveGoal = forms.goals.some((goal) => goal.id === focusId);
+        const isArchivedGoal = archivedGoals.some((goal) => goal.id === focusId);
+        if (!isActiveGoal && !isArchivedGoal) return;
+
+        if (isArchivedGoal && archivedDetailsRef.current) archivedDetailsRef.current.open = true;
+        let innerFrame = 0;
+        const frame = window.requestAnimationFrame(() => {
+            setGoalFilter('all');
+            setFocusedGoalId(focusId);
+            innerFrame = window.requestAnimationFrame(() => {
+                const target = document.getElementById(`goal-card-${focusId}`);
+                target?.scrollIntoView({ block: 'center' });
+                target?.focus({ preventScroll: true });
+            });
+        });
+        return () => {
+            window.cancelAnimationFrame(frame);
+            window.cancelAnimationFrame(innerFrame);
+        };
+    }, [archivedGoals, forms.goals, loaded]);
 
     const clearFeedback = () => {
         setMessage('');
@@ -1148,7 +1179,10 @@ export default function GoalsPage() {
                             return (
                                 <article
                                     key={goal.id}
-                                    className={`card goal-card goal-list-card${isEditing ? ' goal-list-card-editing' : ''}`}
+                                    id={`goal-card-${goal.id}`}
+                                    tabIndex={-1}
+                                    aria-labelledby={`goal-heading-${goal.id}`}
+                                    className={`card goal-card goal-list-card${isEditing ? ' goal-list-card-editing' : ''}${focusedGoalId === goal.id ? ' goal-card-focused' : ''}`}
                                 >
                                     <div className="goal-list-summary">
                                         <div className="goal-list-summary-main">
@@ -1168,7 +1202,7 @@ export default function GoalsPage() {
                                                 )}
                                                 {changed && <span className="badge badge-secondary">未保存</span>}
                                             </div>
-                                            <h3>{displayGoal.meetName || displayGoal.goalText || '大会名未設定'}</h3>
+                                            <h3 id={`goal-heading-${goal.id}`}>{displayGoal.meetName || displayGoal.goalText || '大会名未設定'}</h3>
                                             {displayGoal.meetName && displayGoal.goalText && (
                                                 <p>{displayGoal.goalText}</p>
                                             )}
@@ -1252,7 +1286,7 @@ export default function GoalsPage() {
                 </section>
 
                 {archivedGoals.length > 0 && (
-                    <details className="card goals-history">
+                    <details ref={archivedDetailsRef} className="card goals-history">
                         <summary>
                             <span className="goal-history-summary-title">
                                 <ArchiveIcon aria-hidden="true" size={21} weight="bold" />
@@ -1268,10 +1302,17 @@ export default function GoalsPage() {
                                 const target = formatGoalTarget(goal);
                                 const displayGoal = getCompetitionGoalDisplayValues(goal);
                                 return (
-                                    <article key={goal.id} className="goal-history-item">
+                                    <article
+                                        key={goal.id}
+                                        id={`goal-card-${goal.id}`}
+                                        tabIndex={-1}
+                                        aria-labelledby={`goal-heading-${goal.id}`}
+                                        className={`goal-history-item${focusedGoalId === goal.id ? ' goal-card-focused' : ''}`}
+                                    >
                                         <div className="goal-history-heading">
                                             <div>
                                                 <p className="goal-card-kicker">{GOAL_TYPE_LABELS[goal.type]}</p>
+                                                <h3 id={`goal-heading-${goal.id}`}>{displayGoal.meetName || displayGoal.goalText || '大会名未設定'}</h3>
                                             </div>
                                         </div>
                                         <dl className="goal-display-list">

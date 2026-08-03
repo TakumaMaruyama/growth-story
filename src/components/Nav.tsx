@@ -1,10 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { BookOpenTextIcon } from '@phosphor-icons/react/dist/csr/BookOpenText';
-import { ChartLineUpIcon } from '@phosphor-icons/react/dist/csr/ChartLineUp';
+import { CalendarDotsIcon } from '@phosphor-icons/react/dist/csr/CalendarDots';
 import { HouseIcon } from '@phosphor-icons/react/dist/csr/House';
 import { NotePencilIcon } from '@phosphor-icons/react/dist/csr/NotePencil';
 import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
@@ -22,7 +23,7 @@ const USER_LINKS = [
     { href: '/daily', label: '練習日誌', Icon: NotePencilIcon },
     { href: '/goals', label: '大会目標', Icon: TargetIcon },
     { href: '/story', label: '競泳物語', Icon: BookOpenTextIcon },
-    { href: '/timeline', label: '振り返り', Icon: ChartLineUpIcon },
+    { href: '/timeline', label: '記録', Icon: CalendarDotsIcon },
 ] as const;
 
 const ADMIN_LINKS = [{ href: '/admin/users', label: 'ユーザー管理' }] as const;
@@ -60,7 +61,9 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
             <div className="nav-content">
                 <div className="nav-topline">
                     <Link href={isAdmin ? '/admin/users' : '/'} className="brand-link">
-                        <span className="brand-mark" aria-hidden="true">S</span>
+                        <span className="brand-mark" aria-hidden="true">
+                            <Image src="/icons/icon-192.png" alt="" width={32} height={32} priority />
+                        </span>
                         <span>{isAdmin ? '競泳物語 管理' : '私の競泳物語'}</span>
                     </Link>
                     <div className="account-actions">

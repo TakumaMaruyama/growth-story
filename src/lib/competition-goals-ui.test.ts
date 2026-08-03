@@ -64,3 +64,14 @@ test('home shows at most three active goals with overflow and add affordances', 
     assert.match(source, /goal\.id === nextMeetGoalId/);
     assert.match(source, />次の大会<\/span>/);
 });
+
+test('record links can focus active and archived goals without opening edit mode', async () => {
+    const source = await readSource('src/app/goals/page.tsx');
+
+    assert.match(source, /new URLSearchParams\(window\.location\.search\)/);
+    assert.match(source, /query\.get\('focus'\)/);
+    assert.match(source, /archivedDetailsRef\.current\.open = true/);
+    assert.match(source, /document\.getElementById\(`goal-card-\$\{focusId\}`\)/);
+    assert.match(source, /target\?\.focus\(\{ preventScroll: true \}\)/);
+    assert.equal(source.includes('setEditingKey(focusId)'), false);
+});

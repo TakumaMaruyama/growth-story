@@ -208,10 +208,10 @@ export default async function HomePage() {
           )}
         </section>
 
-        <section className="card" aria-labelledby="review-heading">
-          <h2 id="review-heading" className="section-title">これまでを振り返る</h2>
-          <p className="muted">日誌と物語の更新を、ひとつの流れで確認できます。</p>
-          <Link href="/timeline" className="btn btn-secondary">振り返りを開く</Link>
+        <section className="card" aria-labelledby="records-heading">
+          <h2 id="records-heading" className="section-title">これまでの記録</h2>
+          <p className="muted">日誌、大会目標、競泳物語を、カレンダーと一覧で確認できます。</p>
+          <Link href="/timeline" className="btn btn-secondary">記録を開く</Link>
         </section>
       </main>
     </>

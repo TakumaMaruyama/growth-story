@@ -29,6 +29,7 @@ test('desktop and mobile navigation share the canonical feature order', async ()
     const links = source.slice(source.indexOf('const USER_LINKS'), source.indexOf('const ADMIN_LINKS'));
 
     assertOrdered(links, ["href: '/daily'", "href: '/goals'", "href: '/story'"], 'user navigation');
+    assert.match(links, /href: '\/timeline', label: '記録'/);
     assert.equal(source.includes('MOBILE_USER_LINKS'), false);
     assert.match(source, /const links = isAdmin \? ADMIN_LINKS : USER_LINKS/);
     assert.equal(source.match(/\{USER_LINKS\.map/g)?.length, 1);
@@ -48,12 +49,19 @@ test('home actions, summaries and sections use the canonical feature order', asy
     assertOrdered(source, ['aria-labelledby="today-heading"', 'aria-labelledby="goals-heading"', 'aria-labelledby="story-heading"'], 'home sections');
 });
 
-test('admin overview and review empty state use the canonical feature order', async () => {
+test('admin overview and record empty state use the canonical feature order', async () => {
     const adminSource = await readSource('src/app/admin/users/[userId]/page.tsx');
     const timelineSource = await readSource('src/app/timeline/page.tsx');
 
     assertOrdered(adminSource, ['練習日誌一覧', '大会目標</Link>', '競泳物語履歴'], 'admin detail actions');
-    assertOrdered(timelineSource, ['練習日誌を書く', '大会目標を決める', '競泳物語を書く'], 'review empty state actions');
+    assertOrdered(timelineSource, ['日誌を書く', '大会目標を追加', '競泳物語を書く'], 'record empty state actions');
+});
+
+test('home links to the combined record calendar and list', async () => {
+    const source = await readSource('src/app/page.tsx');
+    assert.match(source, />これまでの記録<\/h2>/);
+    assert.match(source, /日誌、大会目標、競泳物語を、カレンダーと一覧で確認できます。/);
+    assert.match(source, /href="\/timeline"[^>]*>記録を開く<\/Link>/);
 });
 
 test('authentication copy introduces the three features in the canonical order', async () => {
