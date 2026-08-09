@@ -1,1 +1,2 @@
 - [Prod schema via Publish flow](prod-schema-publish-flow.md) — prod schema lands only via Publish diff; prod `_prisma_migrations` never updates; use two-phase publish for data backfills.
+- [Prod SQL tool quirks](prod-sql-tool-quirks.md) — columns are snake_case; double-quoted identifiers make executeSql silently return only START TRANSACTION/ROLLBACK.
