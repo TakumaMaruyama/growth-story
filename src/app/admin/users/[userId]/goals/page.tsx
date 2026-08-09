@@ -81,7 +81,11 @@ export default async function AdminUserGoalsPage({ params }: Props) {
             : '未設定';
         const isElapsed = isCompetitionGoalElapsed(goal, today);
         return (
-            <article key={goal.id} className="summary-item stack">
+            <article
+                key={goal.id}
+                id={`goal-${goal.id}`}
+                className="summary-item stack admin-goal-target"
+            >
                 <div className="goal-list-badges">
                     <p className="eyebrow">{GOAL_LABELS[goal.type]}</p>
                     <span className={`badge ${goal.isActive ? 'badge-primary' : 'badge-secondary'}`}>

@@ -577,6 +577,24 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
   font-weight: 700;
 }
 
+.admin-users-update-time {
+  min-width: 10.5rem;
+  white-space: nowrap;
+}
+
+.admin-users-update-item {
+  min-width: 11rem;
+}
+
+.admin-goal-target {
+  scroll-margin-top: 1rem;
+}
+
+.admin-goal-target:target {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

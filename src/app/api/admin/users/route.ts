@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { jsonResponse } from '@/lib/request';
 import { getUserFullName, hasStructuredRealName } from '@/lib/user-name';
+import { getMemberLatestUpdate } from '@/lib/member-latest-update';
 
 const PAGE_SIZE = 50;
 
@@ -29,6 +30,21 @@ export async function GET(request: NextRequest) {
                 membershipStatus: true,
                 withdrawnAt: true,
                 createdAt: true,
+                dailyLogs: {
+                    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+                    take: 1,
+                    select: { logDate: true, updatedAt: true },
+                },
+                competitionGoals: {
+                    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+                    take: 1,
+                    select: { id: true, type: true, updatedAt: true },
+                },
+                storyVersions: {
+                    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                    take: 1,
+                    select: { id: true, version: true, createdAt: true },
+                },
             },
         });
         const hasMore = users.length > PAGE_SIZE;
@@ -44,6 +60,11 @@ export async function GET(request: NextRequest) {
             membershipStatus: target.membershipStatus,
             withdrawnAt: target.withdrawnAt,
             createdAt: target.createdAt,
+            latestUpdate: getMemberLatestUpdate(target.id, {
+                dailyLog: target.dailyLogs[0] ?? null,
+                competitionGoal: target.competitionGoals[0] ?? null,
+                storyVersion: target.storyVersions[0] ?? null,
+            }),
         }));
 
         return jsonResponse({

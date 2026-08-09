@@ -21,6 +21,12 @@ interface UserListItem {
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
     withdrawnAt: string | null;
     createdAt: string;
+    latestUpdate: {
+        kind: 'daily' | 'goal' | 'story';
+        updatedAt: string;
+        itemLabel: string;
+        href: string;
+    } | null;
 }
 
 interface UserPage {
@@ -45,6 +51,18 @@ interface IssuedPasswordResetLink {
     fullName: string;
     url: string;
     expiresAt: string;
+}
+
+function formatLatestUpdateDate(value: string): string {
+    return new Date(value).toLocaleString('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
 }
 
 export default function AdminUsersPage() {
@@ -287,7 +305,7 @@ export default function AdminUsersPage() {
                     <div>
                         <p className="eyebrow">Administration</p>
                         <h1 className="page-title">会員管理</h1>
-                        <p className="muted">保護者へ送る共通登録URLと、会員の利用状態を管理します。</p>
+                        <p className="muted">会員ごとの最新更新と利用状態を確認・管理します。</p>
                     </div>
                 </div>
 
@@ -413,6 +431,8 @@ export default function AdminUsersPage() {
                                         <tr>
                                             <th scope="col">ログインID</th>
                                             <th scope="col">選手氏名（本名）</th>
+                                            <th scope="col">最新更新日時</th>
+                                            <th scope="col">更新項目</th>
                                             <th scope="col">会員状態</th>
                                             <th scope="col">ログイン</th>
                                             <th scope="col">操作</th>
@@ -427,6 +447,23 @@ export default function AdminUsersPage() {
                                                     {target.role === 'USER' && !target.hasRealName && (
                                                         <small className="legacy-name-note">本名未登録</small>
                                                     )}
+                                                </td>
+                                                <td className="admin-users-update-time">
+                                                    {target.latestUpdate ? (
+                                                        <time dateTime={target.latestUpdate.updatedAt}>
+                                                            {formatLatestUpdateDate(target.latestUpdate.updatedAt)}
+                                                        </time>
+                                                    ) : <span className="muted">記録なし</span>}
+                                                </td>
+                                                <td className="admin-users-update-item">
+                                                    {target.latestUpdate ? (
+                                                        <Link
+                                                            href={target.latestUpdate.href}
+                                                            aria-label={`${target.fullName}さんの最新更新「${target.latestUpdate.itemLabel}」を見る`}
+                                                        >
+                                                            {target.latestUpdate.itemLabel}
+                                                        </Link>
+                                                    ) : <span className="muted">—</span>}
                                                 </td>
                                                 <td>
                                                     <span className={`badge ${target.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
