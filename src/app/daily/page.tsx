@@ -631,8 +631,7 @@ function DailyLogPageContent() {
         && dirty,
     );
     const badgePercent = Math.round(badgeProgress.progress * 100);
-    const displayedBadgeMilestone = badgeProgress.nextMilestone
-        ?? badgeProgress.latestMilestone
+    const displayedBadgeMilestone = badgeProgress.latestMilestone
         ?? DAILY_LOG_BADGE_DEFINITIONS[0].milestone;
     const displayedBadge = getDailyLogBadgeDefinition(displayedBadgeMilestone);
     const earnedBadge = earnedMilestone

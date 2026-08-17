@@ -162,6 +162,8 @@ test('badge helpers reject impossible record counts', () => {
 
 test('daily page keeps the color criteria available but collapsed by default', async () => {
     const source = await readFile(path.join(process.cwd(), 'src/app/daily/page.tsx'), 'utf8');
+    assert.match(source, /const displayedBadgeMilestone = badgeProgress\.latestMilestone/);
+    assert.doesNotMatch(source, /const displayedBadgeMilestone = badgeProgress\.nextMilestone/);
     assert.match(source, /<details className="milestone-guide">/);
     assert.match(source, /バッジの色と達成条件を見る/);
     assert.match(source, /最高バッジ「レジェンド」を達成しました/);
