@@ -480,6 +480,7 @@ function DailyLogPageContent() {
 
     const handleDateChange = (nextDate: string) => {
         if (!nextDate || nextDate === loadedDateRef.current || saving) return;
+        if (todayDate && nextDate > todayDate) return;
         if (dirtyRef.current && !window.confirm('保存していない変更があります。破棄して別の日へ移動しますか？')) {
             return;
         }
@@ -658,6 +659,7 @@ function DailyLogPageContent() {
                                     id="date"
                                     className="quick-date-input"
                                     aria-label="表示する日付を選択"
+                                    max={todayDate ?? undefined}
                                     value={loadedDate ?? ''}
                                     onChange={(event) => handleDateChange(event.target.value)}
                                     disabled={saving || loading}
@@ -665,7 +667,7 @@ function DailyLogPageContent() {
                                 />
                             </span>
                         </label>
-                        <p className="quick-date-hint">カレンダーを押して、表示する日を変更</p>
+                        <p className="quick-date-hint">カレンダーを押して、今日までの日付を選択できます</p>
                     </div>
                     <h1 className="quick-log-title">
                         {loadedDate && loadedDate === todayDate ? '今日の30秒ログ' : 'この日の30秒ログ'}
