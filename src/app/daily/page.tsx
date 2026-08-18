@@ -648,19 +648,25 @@ function DailyLogPageContent() {
             <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-quick-log">
                 <div className="quick-log-header">
-                    <label className="quick-date-control" htmlFor="date">
-                        <CalendarBlankIcon aria-hidden="true" size={24} weight="bold" />
-                        <span className="visually-hidden">日付</span>
-                        <input
-                            type="date"
-                            id="date"
-                            className="quick-date-input"
-                            value={loadedDate ?? ''}
-                            onChange={(event) => handleDateChange(event.target.value)}
-                            disabled={saving || loading}
-                            required
-                        />
-                    </label>
+                    <div className="quick-date-picker">
+                        <label className="quick-date-control" htmlFor="date">
+                            <CalendarBlankIcon aria-hidden="true" size={26} weight="bold" />
+                            <span className="quick-date-copy">
+                                <span className="quick-date-label">日付を選択</span>
+                                <input
+                                    type="date"
+                                    id="date"
+                                    className="quick-date-input"
+                                    aria-label="表示する日付を選択"
+                                    value={loadedDate ?? ''}
+                                    onChange={(event) => handleDateChange(event.target.value)}
+                                    disabled={saving || loading}
+                                    required
+                                />
+                            </span>
+                        </label>
+                        <p className="quick-date-hint">カレンダーを押して、表示する日を変更</p>
+                    </div>
                     <h1 className="quick-log-title">
                         {loadedDate && loadedDate === todayDate ? '今日の30秒ログ' : 'この日の30秒ログ'}
                     </h1>

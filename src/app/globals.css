@@ -1245,25 +1245,74 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
   margin-bottom: 1.6rem;
 }
 
+.quick-date-picker {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 0.55rem;
+}
+
 .quick-date-control {
   display: inline-flex;
-  min-height: 44px;
+  min-height: 58px;
   align-items: center;
-  gap: 0.55rem;
-  margin-bottom: 0.55rem;
-  color: var(--secondary);
+  gap: 0.7rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card-bg);
+  color: var(--foreground);
+  box-shadow: var(--shadow);
   cursor: pointer;
 }
 
+.quick-date-control:hover,
+.quick-date-control:focus-within {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.quick-date-control > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.quick-date-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.05rem;
+}
+
+.quick-date-label {
+  color: var(--secondary);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
 .quick-date-input {
-  min-height: 44px;
-  padding: 0;
+  min-width: 10.5rem;
+  min-height: 32px;
+  padding: 0.05rem 0.2rem;
   border: 0;
   background: transparent;
-  color: inherit;
-  font-size: 1rem;
-  font-weight: 650;
+  color: var(--foreground);
+  font-size: 1.1rem;
+  font-weight: 800;
   cursor: pointer;
+}
+
+.quick-date-input:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.quick-date-hint {
+  margin: 0.35rem 0 0;
+  color: var(--secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .quick-log-title {
