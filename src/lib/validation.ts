@@ -251,7 +251,7 @@ export function parseDailyLogInput(body: Record<string, unknown>): ValidationRes
 
   const date = typeof body.date === 'string' ? body.date : '';
   const logDate = parseDailyLogDate(date);
-  if (!logDate) return failure('日付は1970年以降、今日から1年以内で入力してください');
+  if (!logDate) return failure('日付は1970年以降、今日までで入力してください');
 
   let baseRevision: number | null = null;
   if (body.baseRevision !== null) {

@@ -26,7 +26,12 @@ export async function GET(request: NextRequest) {
     const today = todayJST();
     const date = request.nextUrl.searchParams.get('date') || today;
     const logDate = parseDailyLogDate(date);
-    if (!logDate) return jsonResponse({ error: '日付は1970年以降、今日から1年以内で指定してください' }, 400);
+    if (!logDate) {
+        return jsonResponse({
+            error: '日付は1970年以降、今日までで指定してください',
+            today,
+        }, 400);
+    }
 
     try {
         const todayDate = parseDateOnly(today)!;

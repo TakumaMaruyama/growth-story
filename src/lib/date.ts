@@ -3,7 +3,6 @@ import { toZonedTime } from 'date-fns-tz';
 
 const JST = 'Asia/Tokyo';
 export const MIN_DAILY_LOG_DATE = '1970-01-01';
-const MAX_DAILY_LOG_FUTURE_DAYS = 366;
 
 /**
  * 現在のJST日時を取得
@@ -40,17 +39,15 @@ export function parseDateOnly(dateStr: string): Date | null {
     return date;
 }
 
-/** 日誌として受け付ける範囲（1970年以降〜JSTの今日から366日後）を検証する。 */
+/** 日誌として受け付ける範囲（1970年以降〜JSTの今日まで）を検証する。 */
 export function parseDailyLogDate(dateStr: string, now = new Date()): Date | null {
     const date = parseDateOnly(dateStr);
     if (!date) return null;
 
     const today = parseDateOnly(format(toZonedTime(now, JST), 'yyyy-MM-dd'))!;
-    const latest = new Date(today);
-    latest.setUTCDate(latest.getUTCDate() + MAX_DAILY_LOG_FUTURE_DAYS);
     const earliest = parseDateOnly(MIN_DAILY_LOG_DATE)!;
 
-    return date >= earliest && date <= latest ? date : null;
+    return date >= earliest && date <= today ? date : null;
 }
 
 /**

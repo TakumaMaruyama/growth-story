@@ -166,6 +166,9 @@ test('daily page keeps the color criteria available but collapsed by default', a
     assert.match(source, /カレンダーを押して、今日までの日付を選択できます/);
     assert.match(source, /max=\{todayDate \?\? undefined\}/);
     assert.match(source, /if \(todayDate && nextDate > todayDate\) return;/);
+    assert.match(source, /window\.location\.replace\(`\/daily\?date=/);
+    assert.match(source, /DAILY_LOG_LOAD_TIMEOUT_MS = 15_000/);
+    assert.match(source, /読み込みに時間がかかっています。再試行してください/);
     assert.match(source, /const displayedBadgeMilestone = badgeProgress\.latestMilestone/);
     assert.doesNotMatch(source, /const displayedBadgeMilestone = badgeProgress\.nextMilestone/);
     assert.match(source, /<details className="milestone-guide">/);

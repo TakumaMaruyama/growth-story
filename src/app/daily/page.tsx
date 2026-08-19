@@ -64,6 +64,7 @@ const EMPTY_BADGE_REACH_COUNTS: DailyLogBadgeReachCount[] = DAILY_LOG_BADGE_DEFI
 );
 
 const TODAY_REQUEST_KEY = '__today__';
+const DAILY_LOG_LOAD_TIMEOUT_MS = 15_000;
 
 const ACTIVITY_OPTIONS = [
     { value: 'PRACTICE', label: '練習した', Icon: PersonSimpleSwimIcon },
@@ -269,6 +270,8 @@ function DailyLogPageContent() {
 
     useEffect(() => {
         const controller = new AbortController();
+        let loadTimedOut = false;
+        let loadTimeoutId: number | null = null;
 
         const fetchLog = async () => {
             const previousRequestKey = loadedRequestKeyRef.current;
@@ -314,6 +317,10 @@ function DailyLogPageContent() {
 
             try {
                 const query = requestedDate ? `?date=${encodeURIComponent(requestedDate)}` : '';
+                loadTimeoutId = window.setTimeout(() => {
+                    loadTimedOut = true;
+                    controller.abort();
+                }, DAILY_LOG_LOAD_TIMEOUT_MS);
                 const response = await fetch(`/api/daily${query}`, {
                     cache: 'no-store',
                     signal: controller.signal,
@@ -407,16 +414,22 @@ function DailyLogPageContent() {
                         '別の画面で保存内容が更新されています。このタブの未保存下書きを復元しました。必要な内容を控えてから、下書きを破棄して最新版を読み込んでください。',
                     );
                 }
-            } catch (fetchError) {
-                if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
-                setLoadError('通信を確認して、もう一度お試しください');
+            } catch {
+                if (controller.signal.aborted && !loadTimedOut) return;
+                setLoadError(loadTimedOut
+                    ? '読み込みに時間がかかっています。再試行してください'
+                    : '通信を確認して、もう一度お試しください');
             } finally {
-                if (!controller.signal.aborted) setLoading(false);
+                if (loadTimeoutId !== null) window.clearTimeout(loadTimeoutId);
+                if (!controller.signal.aborted || loadTimedOut) setLoading(false);
             }
         };
 
         void fetchLog();
-        return () => controller.abort();
+        return () => {
+            if (loadTimeoutId !== null) window.clearTimeout(loadTimeoutId);
+            controller.abort();
+        };
     }, [reloadToken, requestKey, requestedDate, router]);
 
     useEffect(() => {
@@ -489,19 +502,8 @@ function DailyLogPageContent() {
         }
 
         dirtyRef.current = false;
-        loadedDateRef.current = null;
-        loadedRequestKeyRef.current = null;
-        baselineLogRef.current = EMPTY_LOG;
-        baseRevisionRef.current = null;
         setDirty(false);
-        setLoadedDate(null);
-        setLoadedRequestKey(null);
-        setLog(EMPTY_LOG);
-        setLoading(true);
-        setMessage('');
-        setError('');
-        setConflictMessage('');
-        router.replace(`/daily?date=${encodeURIComponent(nextDate)}`, { scroll: false });
+        window.location.replace(`/daily?date=${encodeURIComponent(nextDate)}`);
     };
 
     const handleReloadLatest = () => {
