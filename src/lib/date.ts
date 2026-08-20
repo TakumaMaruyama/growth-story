@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
 const JST = 'Asia/Tokyo';
+const DATE_ONLY_MILLISECONDS = 24 * 60 * 60 * 1000;
 export const MIN_DAILY_LOG_DATE = '1970-01-01';
 
 /**
@@ -37,6 +38,11 @@ export function parseDateOnly(dateStr: string): Date | null {
     }
 
     return date;
+}
+
+/** UTC 0時のDate同士から、日付だけの経過日数を取得する。 */
+export function differenceInDateOnlyDays(later: Date, earlier: Date): number {
+    return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / DATE_ONLY_MILLISECONDS));
 }
 
 /** 日誌として受け付ける範囲（1970年以降〜JSTの今日まで）を検証する。 */

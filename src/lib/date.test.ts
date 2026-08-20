@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatJSTDate, parseDailyLogDate, parseDateOnly } from './date';
+import {
+    differenceInDateOnlyDays,
+    formatJSTDate,
+    parseDailyLogDate,
+    parseDateOnly,
+} from './date';
 
 test('parseDateOnly accepts a real calendar date', () => {
     const date = parseDateOnly('2024-02-29');
@@ -22,4 +27,13 @@ test('parseDailyLogDate accepts today and past dates but rejects future dates in
     assert.ok(parseDailyLogDate('2026-08-19', now));
     assert.ok(parseDailyLogDate('2026-08-20', now));
     assert.equal(parseDailyLogDate('2026-08-21', now), null);
+});
+
+test('differenceInDateOnlyDays calculates non-negative date-only gaps', () => {
+    const today = parseDateOnly('2026-08-20')!;
+    const yesterday = parseDateOnly('2026-08-19')!;
+
+    assert.equal(differenceInDateOnlyDays(today, yesterday), 1);
+    assert.equal(differenceInDateOnlyDays(today, today), 0);
+    assert.equal(differenceInDateOnlyDays(yesterday, today), 0);
 });

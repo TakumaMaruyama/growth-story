@@ -26,6 +26,8 @@ export interface DailyLogBadgeReachCount {
     userCount: number;
 }
 
+export type DailyLogBadgeDisplay = DailyLogBadgeDefinition;
+
 export const DAILY_LOG_BADGE_MILESTONES: readonly DailyLogBadgeMilestone[] = Object.freeze(
     DAILY_LOG_BADGE_DEFINITIONS.map((definition) => definition.milestone),
 );
@@ -60,6 +62,13 @@ export function getDailyLogBadgeDefinition(
     );
     if (!definition) throw new RangeError('Unknown daily-log badge milestone');
     return definition;
+}
+
+export function getDailyLogBadgeDisplay(recordCount: number): DailyLogBadgeDisplay | null {
+    const latestMilestone = getDailyLogBadgeProgress(recordCount).latestMilestone;
+    return latestMilestone === null
+        ? null
+        : getDailyLogBadgeDefinition(latestMilestone);
 }
 
 export function getDailyLogBadgeProgress(recordCount: number): DailyLogBadgeProgress {

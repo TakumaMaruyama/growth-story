@@ -6,6 +6,7 @@ import {
     DAILY_LOG_BADGE_DEFINITIONS,
     DAILY_LOG_BADGE_MILESTONES,
     getDailyLogBadgeDefinition,
+    getDailyLogBadgeDisplay,
     getDailyLogBadgeProgress,
     getDailyLogBadgeReachCounts,
     getNewlyEarnedDailyLogBadges,
@@ -44,6 +45,12 @@ test('badge progress starts before the first record', () => {
         remaining: 1,
         progress: 0,
     });
+});
+
+test('badge display uses the latest earned badge color and stays empty before the first record', () => {
+    assert.equal(getDailyLogBadgeDisplay(0), null);
+    assert.deepEqual(getDailyLogBadgeDisplay(8), getDailyLogBadgeDefinition(7));
+    assert.deepEqual(getDailyLogBadgeDisplay(10), getDailyLogBadgeDefinition(10));
 });
 
 test('badge progress advances between milestones and resets at each earned milestone', () => {

@@ -21,6 +21,16 @@ interface UserListItem {
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
     withdrawnAt: string | null;
     createdAt: string;
+    dailyLogCount: number;
+    latestDailyLogDate: string | null;
+    dailyLogDaysSinceLastEntry: number | null;
+    dailyLogBadge: {
+        milestone: number;
+        name: string;
+        color: string;
+        swatch: string;
+        foreground: string;
+    } | null;
     latestUpdate: {
         kind: 'daily' | 'goal' | 'story';
         updatedAt: string;
@@ -63,6 +73,11 @@ function formatLatestUpdateDate(value: string): string {
         minute: '2-digit',
         hour12: false,
     });
+}
+
+function formatDailyLogDate(value: string): string {
+    const [year, month, day] = value.split('-').map(Number);
+    return `${year}年${month}月${day}日`;
 }
 
 export default function AdminUsersPage() {
@@ -300,17 +315,18 @@ export default function AdminUsersPage() {
     return (
         <>
             <Nav userName={adminUser?.displayName} isAdmin />
-            <main id="main-content" className="container">
+            <main id="main-content" className="container admin-users-layout">
                 <div className="page-header">
                     <div>
                         <p className="eyebrow">Administration</p>
                         <h1 className="page-title">会員管理</h1>
-                        <p className="muted">会員ごとの最新更新と利用状態を確認・管理します。</p>
+                        <p className="muted">会員ごとの日誌記入回数・バッジ色・最新更新と利用状態を確認・管理します。</p>
                     </div>
                 </div>
 
-                <section className="card" aria-labelledby="registration-link-heading">
-                    <h2 id="registration-link-heading" className="section-title">共通の会員登録URL</h2>
+                <details className="card admin-users-registration">
+                    <summary className="section-title admin-users-section-summary">共通の会員登録URL</summary>
+                    <div className="admin-users-registration-content">
                     <p className="muted">
                         このURLは全選手共通で、何人でも登録できます。管理者から案内を受けた保護者だけに送ってください。
                     </p>
@@ -352,10 +368,11 @@ export default function AdminUsersPage() {
                             </div>
                         </div>
                     ) : null}
-                </section>
+                    </div>
+                </details>
 
                 {passwordResetLink && (
-                    <section className="card" aria-labelledby="password-reset-link-heading">
+                    <section className="card admin-users-password-reset" aria-labelledby="password-reset-link-heading">
                         <div className="page-header">
                             <div>
                                 <h2 id="password-reset-link-heading" className="section-title">
@@ -405,7 +422,7 @@ export default function AdminUsersPage() {
                     </section>
                 )}
 
-                <section className="card" aria-labelledby="users-heading">
+                <section className="card admin-users-list" aria-labelledby="users-heading">
                     <h2 id="users-heading" className="section-title">会員一覧</h2>
                     {loadError && (
                         <div className="alert alert-danger" role="alert">
@@ -431,10 +448,11 @@ export default function AdminUsersPage() {
                                         <tr>
                                             <th scope="col">ログインID</th>
                                             <th scope="col">選手氏名（本名）</th>
-                                            <th scope="col">最新更新日時</th>
-                                            <th scope="col">更新項目</th>
-                                            <th scope="col">会員状態</th>
-                                            <th scope="col">ログイン</th>
+                                            <th scope="col">日誌記入回数</th>
+                                            <th scope="col">バッジ</th>
+                                            <th scope="col">最終日誌</th>
+                                            <th scope="col">最新更新</th>
+                                            <th scope="col">状態</th>
                                             <th scope="col">操作</th>
                                         </tr>
                                     </thead>
@@ -448,35 +466,67 @@ export default function AdminUsersPage() {
                                                         <small className="legacy-name-note">本名未登録</small>
                                                     )}
                                                 </td>
-                                                <td className="admin-users-update-time">
-                                                    {target.latestUpdate ? (
-                                                        <time dateTime={target.latestUpdate.updatedAt}>
-                                                            {formatLatestUpdateDate(target.latestUpdate.updatedAt)}
-                                                        </time>
-                                                    ) : <span className="muted">記録なし</span>}
+                                                <td className="admin-users-daily-count">
+                                                    <strong>{target.dailyLogCount}回</strong>
+                                                    <small className="admin-users-count-note">今日まで</small>
                                                 </td>
-                                                <td className="admin-users-update-item">
+                                                <td className="admin-users-badge">
+                                                    {target.dailyLogBadge ? (
+                                                        <span
+                                                            className="admin-badge-chip"
+                                                            style={{
+                                                                background: target.dailyLogBadge.swatch,
+                                                                color: target.dailyLogBadge.foreground,
+                                                            }}
+                                                            aria-label={`${target.fullName}さんのバッジ：${target.dailyLogBadge.name}`}
+                                                        >
+                                                            {target.dailyLogBadge.name}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="admin-badge-chip admin-badge-chip-empty">未獲得</span>
+                                                    )}
+                                                </td>
+                                                <td className="admin-users-last-daily-log">
+                                                    {target.latestDailyLogDate ? (
+                                                        <>
+                                                            <time dateTime={target.latestDailyLogDate}>
+                                                                {formatDailyLogDate(target.latestDailyLogDate)}
+                                                            </time>
+                                                            <small className="admin-users-count-note">
+                                                                {target.dailyLogDaysSinceLastEntry === 0
+                                                                    ? '今日記入'
+                                                                    : `${target.dailyLogDaysSinceLastEntry}日未記入`}
+                                                            </small>
+                                                        </>
+                                                    ) : <span className="muted">未記入</span>}
+                                                </td>
+                                                <td className="admin-users-latest-update">
                                                     {target.latestUpdate ? (
                                                         <Link
                                                             href={target.latestUpdate.href}
                                                             aria-label={`${target.fullName}さんの最新更新「${target.latestUpdate.itemLabel}」を見る`}
                                                         >
-                                                            {target.latestUpdate.itemLabel}
+                                                            <time dateTime={target.latestUpdate.updatedAt}>
+                                                                {formatLatestUpdateDate(target.latestUpdate.updatedAt)}
+                                                            </time>
+                                                            <span className="admin-users-update-item">{target.latestUpdate.itemLabel}</span>
                                                         </Link>
-                                                    ) : <span className="muted">—</span>}
+                                                    ) : <span className="muted">記録なし</span>}
                                                 </td>
                                                 <td>
-                                                    <span className={`badge ${target.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
-                                                        {target.membershipStatus === 'ACTIVE' ? '利用中' : '退会'}
-                                                    </span>
+                                                    <div className="admin-users-status">
+                                                        <span className={`badge ${target.membershipStatus === 'ACTIVE' ? 'badge-primary' : 'badge-secondary'}`}>
+                                                            {target.membershipStatus === 'ACTIVE' ? '利用中' : '退会'}
+                                                        </span>
+                                                        <span className={`badge ${target.isActive ? 'badge-primary' : 'badge-secondary'}`}>
+                                                            {target.isActive ? 'ログイン可能' : 'ログイン停止'}
+                                                        </span>
+                                                    </div>
                                                 </td>
                                                 <td>
-                                                    <span className={`badge ${target.isActive ? 'badge-primary' : 'badge-secondary'}`}>
-                                                        {target.isActive ? '可能' : '停止'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <div className="button-row">
+                                                    <details className="admin-user-actions">
+                                                        <summary className="btn btn-secondary btn-small">操作</summary>
+                                                        <div className="admin-user-actions-menu">
                                                         <Link
                                                             href={`/admin/users/${target.id}`}
                                                             className="btn btn-secondary btn-small"
@@ -509,12 +559,13 @@ export default function AdminUsersPage() {
                                                                     onClick={() => void toggleActive(target)}
                                                                     className="btn btn-secondary btn-small"
                                                                     disabled={pendingUserIds.has(target.id)}
-                                                                >
-                                                                    {target.isActive ? 'ログイン停止' : '停止解除'}
+                                                            >
+                                                                {target.isActive ? 'ログイン停止' : '停止解除'}
                                                                 </button>
                                                             </>
                                                         )}
-                                                    </div>
+                                                        </div>
+                                                    </details>
                                                     {toggleErrors[target.id] && (
                                                         <p className="error-message" role="alert">{toggleErrors[target.id]}</p>
                                                     )}

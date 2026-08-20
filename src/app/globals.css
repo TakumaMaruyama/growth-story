@@ -577,13 +577,145 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
   font-weight: 700;
 }
 
-.admin-users-update-time {
-  min-width: 10.5rem;
+.admin-users-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-users-list {
+  order: 1;
+}
+
+.admin-users-password-reset {
+  order: 2;
+}
+
+.admin-users-registration {
+  order: 3;
+}
+
+.admin-users-section-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-users-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-users-section-summary::before {
+  display: inline-block;
+  width: 1.4rem;
+  color: var(--primary);
+  content: '+';
+}
+
+.admin-users-registration[open] .admin-users-section-summary::before {
+  content: '−';
+}
+
+.admin-users-registration-content {
+  margin-top: 1rem;
+}
+
+.admin-users-last-daily-log {
+  min-width: 8rem;
+  white-space: nowrap;
+}
+
+.admin-users-latest-update {
+  min-width: 15rem;
+}
+
+.admin-users-latest-update a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.admin-users-latest-update time {
   white-space: nowrap;
 }
 
 .admin-users-update-item {
-  min-width: 11rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-users-daily-count {
+  min-width: 6rem;
+  white-space: nowrap;
+}
+
+.admin-users-count-note {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--secondary);
+  font-size: 0.75rem;
+}
+
+.admin-users-badge {
+  min-width: 8.5rem;
+  white-space: nowrap;
+}
+
+.admin-badge-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 999px;
+  box-shadow: 0 0.2rem 0.65rem rgb(15 23 42 / 18%);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.admin-badge-chip-empty {
+  border-color: var(--border);
+  background: var(--secondary-action);
+  color: white;
+  box-shadow: none;
+}
+
+.admin-users-status {
+  display: flex;
+  min-width: 8.5rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.admin-user-actions {
+  min-width: 8rem;
+}
+
+.admin-user-actions > summary {
+  display: inline-flex;
+  width: 100%;
+  cursor: pointer;
+  justify-content: center;
+  list-style: none;
+}
+
+.admin-user-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-user-actions-menu {
+  display: grid;
+  min-width: 10rem;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+}
+
+.admin-user-actions-menu .btn {
+  width: 100%;
+  justify-content: center;
 }
 
 .admin-goal-target {
