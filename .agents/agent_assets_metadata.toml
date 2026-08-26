@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ncUG93NGyzX_CanaIyux2"
+uri = "file://artifacts/growth-story-instagram/public/audio/bg_music.mp3"
+type = "audio"
+title = "background music"
+description = "Generated music: Lo-fi electronic instrumental background music scoring a Japanese youth swimming training journal app introduction. Soft electric piano, warm synth plucks, restrained kick and light …"

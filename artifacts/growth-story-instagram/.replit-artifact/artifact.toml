@@ -1,0 +1,29 @@
+kind = "video"
+videoAspectRatio = "9:16"
+previewPath = "/growth-story-instagram/"
+title = "私の競泳物語 — Instagram紹介動画"
+description = "競泳の練習日誌・大会目標・15問の物語・記録タイムラインを紹介するInstagram Reels向け縦型動画。"
+version = "1.0.0"
+id = "artifacts/growth-story-instagram"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/growth-story-instagram/" ]
+localPort = 22356
+
+[services.development]
+run = "pnpm --filter @workspace/growth-story-instagram run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/growth-story-instagram", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/growth-story-instagram/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22356"
+BASE_PATH = "/growth-story-instagram/"
