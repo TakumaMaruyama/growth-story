@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Growth Story"
+description = "The existing Growth Story product, ported into the workspace as the primary web app for its users."
+version = "1.0.0"
+id = "artifacts/growth-story"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26004
+
+[services.development]
+run = "pnpm --filter @workspace/growth-story run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/growth-story", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/growth-story/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26004"
+BASE_PATH = "/"

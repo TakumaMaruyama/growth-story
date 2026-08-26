@@ -1,0 +1,14 @@
+export const MAX_LOGIN_ID_LENGTH = 64;
+export const MAX_DISPLAY_NAME_LENGTH = 80;
+export const MAX_REAL_NAME_PART_LENGTH = 40;
+export const MIN_USER_PASSWORD_LENGTH = 8;
+export const MIN_ADMIN_PASSWORD_LENGTH = 10;
+export const MAX_PASSWORD_BYTES = 72;
+export const MAX_DAILY_TEXT_LENGTH = 2_000;
+export const MAX_STORY_ANSWER_LENGTH = 4_000;
+export const MAX_STORY_NOTE_LENGTH = 200;
+export const MAX_STORY_VERSIONS = 250;
+export const MAX_GOAL_TITLE_LENGTH = 120;
+export const MAX_GOAL_DETAILS_LENGTH = 2_000;
+export const MAX_GUARDIAN_NAME_LENGTH = 80;
+export const MAX_GUARDIAN_RELATIONSHIP_LENGTH = 40;
