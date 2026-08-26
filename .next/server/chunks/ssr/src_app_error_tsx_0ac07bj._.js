@@ -1,0 +1,3 @@
+module.exports=[23953,a=>{"use strict";var b=a.i(87924),c=a.i(72131);a.s(["default",0,function({error:a,reset:d}){return(0,c.useEffect)(()=>{console.error(a)},[a]),(0,b.jsx)("main",{id:"main-content",className:"auth-shell",children:(0,b.jsxs)("div",{className:"card auth-card empty-state",role:"alert",children:[(0,b.jsx)("p",{className:"eyebrow",children:"Error"}),(0,b.jsx)("h1",{className:"page-title",children:"画面を表示できませんでした"}),(0,b.jsx)("p",{children:"一時的な問題の可能性があります。もう一度お試しください。"}),(0,b.jsx)("button",{type:"button",className:"btn btn-primary",onClick:d,children:"再試行"})]})})}])}];
+
+//# sourceMappingURL=src_app_error_tsx_0ac07bj._.js.map
