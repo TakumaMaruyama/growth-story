@@ -61,55 +61,65 @@ export default function VideoTemplate({
   }, [currentSceneKey, onSceneChange]);
 
   return (
-    <div className="w-full h-screen overflow-hidden relative font-sans text-[#172033]">
-      {/* Persistent Background */}
-      <motion.div
-        className="absolute inset-0"
-        animate={{ backgroundColor: BGS[safeSceneIndex] }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      />
-      
-      {/* Background abstract shape to add depth */}
-      <motion.div
-        className="absolute w-[150vw] h-[150vw] rounded-full opacity-[0.03] pointer-events-none"
-        style={{ top: '-20vh', left: '-25vw', backgroundColor: '#000' }}
-        animate={{ 
-          scale: [1, 1.1, 1],
-          y: safeSceneIndex * 20,
-          rotate: safeSceneIndex * 45
+    <div className="w-full h-screen bg-black flex items-center justify-center overflow-hidden font-sans text-[#172033]">
+      <div 
+        className="relative overflow-hidden shrink-0 @container"
+        style={{
+          aspectRatio: '9/16',
+          width: 'min(100vw, calc(100vh * 9 / 16))',
+          height: 'min(100vh, calc(100vw * 16 / 9))',
+          containerType: 'size',
         }}
-        transition={{ duration: 2, ease: "easeInOut" }}
-      />
-      
-      <motion.div
-        className="absolute w-[120vw] h-[120vw] rounded-full opacity-[0.04] pointer-events-none"
-        style={{ bottom: '-30vh', right: '-30vw', backgroundColor: '#000' }}
-        animate={{ 
-          scale: [1, 1.2, 1],
-          x: safeSceneIndex * -10,
-          rotate: safeSceneIndex * -30
-        }}
-        transition={{ duration: 2, ease: "easeInOut" }}
-      />
-
-      {/* Progress Bar at top */}
-      <motion.div
-        className="absolute top-0 left-0 h-[0.8vh] z-50 origin-left"
-        animate={{ backgroundColor: ACCENT_COLORS[safeSceneIndex] }}
-        transition={{ duration: 0.8 }}
       >
+        {/* Persistent Background */}
         <motion.div
-          className="h-full bg-black/20"
-          initial={{ scaleX: 0 }}
-          animate={{ scaleX: (safeSceneIndex + 1) / 5 }}
+          className="absolute inset-0"
+          animate={{ backgroundColor: BGS[safeSceneIndex] }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-          style={{ originX: 0, width: '100vw' }}
         />
-      </motion.div>
+        
+        {/* Background abstract shape to add depth */}
+        <motion.div
+          className="absolute w-[150cqw] h-[150cqw] rounded-full opacity-[0.03] pointer-events-none"
+          style={{ top: '-20cqh', left: '-25cqw', backgroundColor: '#000' }}
+          animate={{ 
+            scale: [1, 1.1, 1],
+            y: safeSceneIndex * 20,
+            rotate: safeSceneIndex * 45
+          }}
+          transition={{ duration: 2, ease: "easeInOut" }}
+        />
+        
+        <motion.div
+          className="absolute w-[120cqw] h-[120cqw] rounded-full opacity-[0.04] pointer-events-none"
+          style={{ bottom: '-30cqh', right: '-30cqw', backgroundColor: '#000' }}
+          animate={{ 
+            scale: [1, 1.2, 1],
+            x: safeSceneIndex * -10,
+            rotate: safeSceneIndex * -30
+          }}
+          transition={{ duration: 2, ease: "easeInOut" }}
+        />
 
-      <AnimatePresence mode="popLayout">
-        {SceneComponent && <SceneComponent key={currentSceneKey} />}
-      </AnimatePresence>
+        {/* Progress Bar at top */}
+        <motion.div
+          className="absolute top-0 left-0 h-[0.8cqh] z-50 origin-left"
+          animate={{ backgroundColor: ACCENT_COLORS[safeSceneIndex] }}
+          transition={{ duration: 0.8 }}
+        >
+          <motion.div
+            className="h-full bg-black/20"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: (safeSceneIndex + 1) / 5 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            style={{ originX: 0, width: '100cqw' }}
+          />
+        </motion.div>
+
+        <AnimatePresence mode="popLayout">
+          {SceneComponent && <SceneComponent key={currentSceneKey} />}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export function Scene4() {
 
   return (
     <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center p-[6vw]"
+      className="absolute inset-0 flex flex-col items-center justify-center p-[6cqw]"
       initial={{ clipPath: 'circle(0% at 50% 50%)' }}
       animate={{ clipPath: 'circle(150% at 50% 50%)' }}
       exit={{ opacity: 0, x: -50 }}
@@ -23,34 +23,34 @@ export function Scene4() {
     >
       {/* UI Mockup */}
       <motion.div
-        className="w-full bg-white rounded-[6vw] shadow-xl border border-[#d8e0ec] overflow-hidden mb-[6vh] flex flex-col relative"
-        style={{ height: '55vh' }}
+        className="w-full bg-white rounded-[6cqw] shadow-xl border border-[#d8e0ec] overflow-hidden mb-[6cqh] flex flex-col relative"
+        style={{ height: '55cqh' }}
         initial={{ y: 50, opacity: 0, rotate: -2 }}
         animate={phase >= 1 ? { y: 0, opacity: 1, rotate: 0 } : { y: 50, opacity: 0, rotate: -2 }}
         transition={{ type: 'spring', stiffness: 350, damping: 25 }}
       >
         {/* Header */}
-        <div className="bg-[#7c3aed] px-[5vw] py-[3vh] text-white flex items-center justify-between">
-          <div className="text-[4.5vw] font-bold">競泳物語</div>
-          <div className="text-[3vw] font-outfit font-bold bg-white/20 px-[3vw] py-[0.5vh] rounded-full">
+        <div className="bg-[#7c3aed] px-[5cqw] py-[3cqh] text-white flex items-center justify-between">
+          <div className="text-[4.5cqw] font-bold">競泳物語</div>
+          <div className="text-[3cqw] font-outfit font-bold bg-white/20 px-[3cqw] py-[0.5cqh] rounded-full">
             1 / 15
           </div>
         </div>
         
         {/* Content */}
-        <div className="p-[5vw] flex-1 flex flex-col relative">
+        <div className="p-[5cqw] flex-1 flex flex-col relative">
           
           <motion.div 
-            className="w-[12vw] h-[12vw] rounded-full bg-[#ede9fe] flex items-center justify-center mb-[3vh]"
+            className="w-[12cqw] h-[12cqw] rounded-full bg-[#ede9fe] flex items-center justify-center mb-[3cqh]"
             initial={{ scale: 0 }}
             animate={phase >= 2 ? { scale: 1 } : { scale: 0 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           >
-            <span className="font-outfit font-black text-[5vw] text-[#7c3aed]">Q1</span>
+            <span className="font-outfit font-black text-[5cqw] text-[#7c3aed]">Q1</span>
           </motion.div>
 
           <motion.div 
-            className="text-[4.5vw] font-bold text-[#172033] leading-snug mb-[4vh]"
+            className="text-[4.5cqw] font-bold text-[#172033] leading-snug mb-[4cqh]"
             initial={{ opacity: 0, y: 10 }}
             animate={phase >= 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
           >
@@ -59,11 +59,11 @@ export function Scene4() {
 
           {/* Typing area */}
           <motion.div 
-            className="w-full bg-[#f4f7fb] rounded-[4vw] p-[4vw] min-h-[15vh] border border-[#d8e0ec]"
+            className="w-full bg-[#f4f7fb] rounded-[4cqw] p-[4cqw] min-h-[15cqh] border border-[#d8e0ec]"
             initial={{ opacity: 0 }}
             animate={phase >= 2 ? { opacity: 1 } : { opacity: 0 }}
           >
-            <div className="text-[#475569] text-[3.5vw] font-medium leading-relaxed">
+            <div className="text-[#475569] text-[3.5cqw] font-medium leading-relaxed">
               {'友達と一緒に通い始めたのがきっかけで...'.split('').map((char, i) => (
                 <motion.span
                   key={i}
@@ -75,7 +75,7 @@ export function Scene4() {
                 </motion.span>
               ))}
               <motion.span 
-                className="inline-block w-[2px] h-[3.5vw] bg-[#7c3aed] ml-[1vw] align-middle"
+                className="inline-block w-[2px] h-[3.5cqw] bg-[#7c3aed] ml-[1cqw] align-middle"
                 animate={phase >= 3 ? { opacity: [0, 1, 0] } : { opacity: 0 }}
                 transition={{ duration: 0.8, repeat: Infinity }}
               />
@@ -88,7 +88,7 @@ export function Scene4() {
       {/* Telop */}
       <div className="text-center w-full">
         <motion.div
-          className="inline-block bg-[#6d28d9] text-white px-[4vw] py-[1vh] rounded-full text-[3vw] font-bold tracking-widest mb-[2vh]"
+          className="inline-block bg-[#6d28d9] text-white px-[4cqw] py-[1cqh] rounded-full text-[3cqw] font-bold tracking-widest mb-[2cqh]"
           initial={{ y: 20, opacity: 0 }}
           animate={phase >= 1 ? { y: 0, opacity: 1 } : { y: 20, opacity: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -96,7 +96,7 @@ export function Scene4() {
           STEP 03
         </motion.div>
         <motion.h2
-          className="text-[6.5vw] font-black text-[#172033] leading-tight"
+          className="text-[6.5cqw] font-black text-[#172033] leading-tight"
           initial={{ y: 20, opacity: 0 }}
           animate={phase >= 1 ? { y: 0, opacity: 1 } : { y: 20, opacity: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
