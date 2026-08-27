@@ -1905,32 +1905,24 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
   cursor: pointer;
 }
 
-.detail-toggle {
-  display: flex;
-  width: 100%;
-  min-height: 52px;
-  align-items: center;
-  gap: 0.55rem;
-  margin-top: 0.5rem;
-  padding: 0.65rem 0;
-  border: 0;
-  background: transparent;
-  color: var(--primary);
-  font-weight: 750;
-  text-align: left;
-  cursor: pointer;
-}
-
-.detail-toggle[aria-expanded="true"] svg {
-  transform: rotate(180deg);
-}
-
 .daily-details {
-  margin: 0 0 1rem;
+  margin: 1rem 0;
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   background: var(--card-bg);
+}
+
+.daily-details-heading {
+  margin: 0 0 1rem;
+  font-size: 1.16rem;
+  line-height: 1.35;
+}
+
+.daily-details-heading span {
+  color: var(--secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .daily-details .form-group:last-child {

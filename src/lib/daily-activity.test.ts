@@ -37,6 +37,14 @@ test('daily log UI offers practice, competition and rest in that order', async (
     assert.match(options, /label: '大会'/);
 });
 
+test('optional daily log fields are always visible and identified as optional', async () => {
+    const source = await readFile(path.join(process.cwd(), 'src/app/daily/page.tsx'), 'utf8');
+
+    assert.match(source, /<section id="daily-details" className="daily-details" aria-labelledby="daily-details-heading">/);
+    assert.match(source, /詳しく振り返る <span>（任意入力）<\/span>/);
+    assert.doesNotMatch(source, /detailsExpanded|detail-toggle|aria-controls="daily-details"/);
+});
+
 test('migration backfills legacy records and preserves the compatibility column', async () => {
     const migration = await readFile(
         path.join(
