@@ -1,4 +1,4 @@
-import { RefreshCw, Bed, Calendar, ChevronDown, CheckCircle, Flag, Save, Medal, Waves, Target } from 'lucide-react';
+import { RefreshCw, Bed, Calendar, CheckCircle, Flag, Save, Medal, Waves, Target } from 'lucide-react';
 
 import { Link } from 'wouter';
 import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -242,7 +242,6 @@ function DailyLogPageContent() {
     const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
     const [log, setLog] = useState<LogData>(EMPTY_LOG);
     const [activePrompt, setActivePrompt] = useState<PromptKey>('goodText');
-    const [detailsExpanded, setDetailsExpanded] = useState(false);
     const [previousFocus, setPreviousFocus] = useState<string | null>(null);
     const [eligibleRecordCount, setEligibleRecordCount] = useState(0);
     const [badgeReachCounts, setBadgeReachCounts] = useState<DailyLogBadgeReachCount[]>(
@@ -303,7 +302,6 @@ function DailyLogPageContent() {
             setLoadedRequestKey(null);
             setTodayDate(null);
             setLog(EMPTY_LOG);
-            setDetailsExpanded(false);
             setPreviousFocus(null);
             setEligibleRecordCount(0);
             setBadgeReachCounts(EMPTY_BADGE_REACH_COUNTS);
@@ -906,54 +904,44 @@ function DailyLogPageContent() {
                                 )}
                             </section>
 
-                            <button
-                                type="button"
-                                className="detail-toggle"
-                                aria-expanded={detailsExpanded}
-                                aria-controls="daily-details"
-                                onClick={() => setDetailsExpanded((current) => !current)}
-                            >
-                                <ChevronDown aria-hidden="true" size={22}  />
-                                詳しく振り返る（任意）
-                            </button>
-
-                            {detailsExpanded && (
-                                <section id="daily-details" className="daily-details" aria-label="詳しい振り返り">
-                                    {PROMPT_DEFINITIONS
-                                        .filter((prompt) => prompt.key !== activePrompt)
-                                        .map((prompt) => (
-                                            <div key={prompt.key} className="form-group">
-                                                <label htmlFor={`detail-${prompt.key}`} className="form-label">{prompt.fullLabel}</label>
-                                                <textarea
-                                                    id={`detail-${prompt.key}`}
-                                                    className="form-textarea"
-                                                    value={log[prompt.key]}
-                                                    onChange={(event) => updateLog(prompt.key, event.target.value)}
-                                                    placeholder={prompt.placeholder}
-                                                    maxLength={MAX_DAILY_TEXT_LENGTH}
+                            <section id="daily-details" className="daily-details" aria-labelledby="daily-details-heading">
+                                <h2 id="daily-details-heading" className="form-label">
+                                    詳しく振り返る（任意入力）
+                                </h2>
+                                {PROMPT_DEFINITIONS
+                                    .filter((prompt) => prompt.key !== activePrompt)
+                                    .map((prompt) => (
+                                        <div key={prompt.key} className="form-group">
+                                            <label htmlFor={`detail-${prompt.key}`} className="form-label">{prompt.fullLabel}</label>
+                                            <textarea
+                                                id={`detail-${prompt.key}`}
+                                                className="form-textarea"
+                                                value={log[prompt.key]}
+                                                onChange={(event) => updateLog(prompt.key, event.target.value)}
+                                                placeholder={prompt.placeholder}
+                                                maxLength={MAX_DAILY_TEXT_LENGTH}
+                                                disabled={saving}
+                                                readOnly={isReadOnly}
+                                                aria-invalid={log[prompt.key].length > MAX_DAILY_TEXT_LENGTH}
+                                                aria-describedby={`detail-${prompt.key}-count`}
+                                            />
+                                            <p id={`detail-${prompt.key}-count`} className="form-help">
+                                                {log[prompt.key].length.toLocaleString('ja-JP')} / {MAX_DAILY_TEXT_LENGTH.toLocaleString('ja-JP')}文字
+                                            </p>
+                                            {!isReadOnly && prompt.key === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
+                                                <button
+                                                    type="button"
+                                                    className="reuse-focus-button"
+                                                    onClick={() => updateLog('tomorrowText', previousFocus)}
                                                     disabled={saving}
-                                                    readOnly={isReadOnly}
-                                                    aria-invalid={log[prompt.key].length > MAX_DAILY_TEXT_LENGTH}
-                                                    aria-describedby={`detail-${prompt.key}-count`}
-                                                />
-                                                <p id={`detail-${prompt.key}-count`} className="form-help">
-                                                    {log[prompt.key].length.toLocaleString('ja-JP')} / {MAX_DAILY_TEXT_LENGTH.toLocaleString('ja-JP')}文字
-                                                </p>
-                                                {!isReadOnly && prompt.key === 'tomorrowText' && previousFocus && !log.tomorrowText.trim() && (
-                                                    <button
-                                                        type="button"
-                                                        className="reuse-focus-button"
-                                                        onClick={() => updateLog('tomorrowText', previousFocus)}
-                                                        disabled={saving}
-                                                    >
-                                                        <RefreshCw aria-hidden="true" size={19}  />
-                                                        前回の意識「{previousFocus}」を使う
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                </section>
-                            )}
+                                                >
+                                                    <RefreshCw aria-hidden="true" size={19}  />
+                                                    前回の意識「{previousFocus}」を使う
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                            </section>
 
                             {!isReadOnly && hasOversizedText && (
                                 <div className="alert alert-warning" role="alert">
