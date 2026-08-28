@@ -57,21 +57,24 @@ export function Scene2() {
             <div className="bg-[#f4f7fb] rounded-[3cqw] p-[3cqw] space-y-[2cqw]">
               <motion.div 
                 className="h-[2cqw] bg-[#d8e0ec] rounded-full w-[80%]"
+                style={{ originX: 0 }}
                 initial={{ scaleX: 0 }}
                 animate={phase >= 2 ? { scaleX: 1 } : { scaleX: 0 }}
-                transition={{ duration: 0.5, delay: 1.8, originX: 0 }}
+                transition={{ duration: 0.5, delay: 1.8 }}
               />
               <motion.div 
                 className="h-[2cqw] bg-[#d8e0ec] rounded-full w-[60%]"
+                style={{ originX: 0 }}
                 initial={{ scaleX: 0 }}
                 animate={phase >= 2 ? { scaleX: 1 } : { scaleX: 0 }}
-                transition={{ duration: 0.5, delay: 2.0, originX: 0 }}
+                transition={{ duration: 0.5, delay: 2.0 }}
               />
               <motion.div 
                 className="h-[2cqw] bg-[#d8e0ec] rounded-full w-[90%]"
+                style={{ originX: 0 }}
                 initial={{ scaleX: 0 }}
                 animate={phase >= 2 ? { scaleX: 1 } : { scaleX: 0 }}
-                transition={{ duration: 0.5, delay: 2.2, originX: 0 }}
+                transition={{ duration: 0.5, delay: 2.2 }}
               />
             </div>
           </div>

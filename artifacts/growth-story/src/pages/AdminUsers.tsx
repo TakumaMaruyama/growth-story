@@ -1,7 +1,7 @@
 
 import { Link } from 'wouter';
 import { useLocation, useSearch } from 'wouter';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Nav from '@/components/Nav';
 import { loginHref } from '@/lib/return-path';
 
@@ -96,9 +96,19 @@ export default function AdminUsersPage() {
     const [copyMessage, setCopyMessage] = useState('');
     const [passwordResetLink, setPasswordResetLink] = useState<IssuedPasswordResetLink | null>(null);
     const [passwordResetCopyMessage, setPasswordResetCopyMessage] = useState('');
+    const passwordResetUrlRef = useRef<HTMLInputElement>(null);
 
     const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
     const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if (!passwordResetLink) return;
+        const input = passwordResetUrlRef.current;
+        if (!input) return;
+
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input.focus({ preventScroll: true });
+    }, [passwordResetLink]);
 
     const redirectForAuthorization = useCallback((status: number) => {
         if (status === 401) {
@@ -406,6 +416,7 @@ export default function AdminUsersPage() {
                             <label htmlFor="passwordResetUrl" className="form-label">保護者へ送るURL</label>
                             <input
                                 id="passwordResetUrl"
+                                 ref={passwordResetUrlRef}
                                 className="form-input"
                                 value={passwordResetLink.url}
                                 readOnly

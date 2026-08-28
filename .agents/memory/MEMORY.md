@@ -1,0 +1,1 @@
+- [Artifact registration after Git integration](artifact-registration-after-git.md) — if registered artifacts disappear after Git integration, revalidate existing manifests instead of recreating them.
