@@ -61,19 +61,15 @@ export default function VideoTemplate({
   }, [currentSceneKey, onSceneChange]);
 
   return (
-    <div className="w-full h-screen bg-black flex items-center justify-center overflow-hidden font-sans text-[#172033]">
-      <div 
-        className="relative overflow-hidden shrink-0 @container"
-        style={{
-          aspectRatio: '9/16',
-          width: 'min(100vw, calc(100vh * 9 / 16))',
-          height: 'min(100vh, calc(100vw * 16 / 9))',
-          containerType: 'size',
-        }}
-      >
-        {/* Persistent Background */}
-        <motion.div
-          className="absolute inset-0"
+    <div
+      className="relative w-full h-full overflow-hidden shrink-0 @container font-sans text-[#172033] bg-black"
+      style={{
+        containerType: 'size',
+      }}
+    >
+      {/* Persistent Background */}
+      <motion.div
+        className="absolute inset-0"
           animate={{ backgroundColor: BGS[safeSceneIndex] }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         />
@@ -116,10 +112,9 @@ export default function VideoTemplate({
           />
         </motion.div>
 
-        <AnimatePresence mode="popLayout">
-          {SceneComponent && <SceneComponent key={currentSceneKey} />}
-        </AnimatePresence>
-      </div>
+      <AnimatePresence mode="popLayout">
+        {SceneComponent && <SceneComponent key={currentSceneKey} />}
+      </AnimatePresence>
     </div>
   );
 }

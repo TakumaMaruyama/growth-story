@@ -126,7 +126,7 @@ export default function VideoWithControls() {
   const barVisible = !collapsed || hovering || tapPinned;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
+    <div className="relative w-full h-full overflow-hidden">
       <VideoTemplate
         key={controls.mountKey}
         durations={controls.durations}
