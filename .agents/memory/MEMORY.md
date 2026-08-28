@@ -1,1 +1,2 @@
 - [Artifact registration after Git integration](artifact-registration-after-git.md) — if registered artifacts disappear after Git integration, revalidate existing manifests instead of recreating them.
+- [Verify encoded video dimensions](verify-encoded-video-dimensions.md) — a portrait preview does not prove the exported MP4 is portrait; inspect the encoded stream before delivery.
