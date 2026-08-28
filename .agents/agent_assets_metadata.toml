@@ -7,3 +7,10 @@ uri = "file://artifacts/growth-story-instagram/public/audio/bg_music.mp3"
 type = "audio"
 title = "background music"
 description = "Generated music: Lo-fi electronic instrumental background music scoring a Japanese youth swimming training journal app introduction. Soft electric piano, warm synth plucks, restrained kick and light …"
+
+[[outputs]]
+id = "h1fmDASsekZg4o5jq6pKb"
+uri = "file://growth-story-instagram-vertical-1080x1920.mp4"
+type = "video"
+title = "私の競泳物語 — Instagram縦動画"
+description = "1080×1920（9:16）、20.05秒、無音。横余白を含まないInstagram Reels用MP4です。"
