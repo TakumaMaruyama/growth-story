@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Nav from '@/components/Nav';
 import { loginHref } from '@/lib/return-path';
 
@@ -97,6 +97,7 @@ export default function AdminUsersPage() {
     const [copyMessage, setCopyMessage] = useState('');
     const [passwordResetLink, setPasswordResetLink] = useState<IssuedPasswordResetLink | null>(null);
     const [passwordResetCopyMessage, setPasswordResetCopyMessage] = useState('');
+    const passwordResetSectionRef = useRef<HTMLElement>(null);
 
     const [pendingUserIds, setPendingUserIds] = useState<Set<string>>(() => new Set());
     const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
@@ -167,6 +168,16 @@ export default function AdminUsersPage() {
         }, 0);
         return () => window.clearTimeout(timeout);
     }, [fetchRegistrationLink, fetchUsers]);
+
+    useEffect(() => {
+        if (!passwordResetLink) return;
+
+        const frame = window.requestAnimationFrame(() => {
+            passwordResetSectionRef.current?.focus({ preventScroll: true });
+            passwordResetSectionRef.current?.scrollIntoView({ block: 'center' });
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [passwordResetLink]);
 
     const copyRegistrationUrl = async () => {
         try {
@@ -372,7 +383,12 @@ export default function AdminUsersPage() {
                 </details>
 
                 {passwordResetLink && (
-                    <section className="card admin-users-password-reset" aria-labelledby="password-reset-link-heading">
+                    <section
+                        ref={passwordResetSectionRef}
+                        className="card admin-users-password-reset"
+                        aria-labelledby="password-reset-link-heading"
+                        tabIndex={-1}
+                    >
                         <div className="page-header">
                             <div>
                                 <h2 id="password-reset-link-heading" className="section-title">

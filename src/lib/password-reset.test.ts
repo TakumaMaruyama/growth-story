@@ -58,4 +58,7 @@ test('login, help, reset, and admin pages explain the two-day one-use flow', asy
     assert.match(reset, /既存のログインはすべて終了/);
     assert.match(admin, /本人・保護者確認/);
     assert.match(admin, /再設定URLをコピー/);
+    assert.match(admin, /passwordResetSectionRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+    assert.match(admin, /passwordResetSectionRef\.current\?\.scrollIntoView\(\{ block: 'center' \}\)/);
+    assert.match(admin, /tabIndex=\{-1\}/);
 });
