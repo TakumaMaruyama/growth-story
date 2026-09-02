@@ -12,5 +12,12 @@ description = "Generated music: Lo-fi electronic instrumental background music s
 id = "h1fmDASsekZg4o5jq6pKb"
 uri = "file://growth-story-instagram-vertical-1080x1920.mp4"
 type = "video"
-title = "私の競泳物語 — Instagram縦動画"
-description = "1080×1920（9:16）、20.05秒、無音。横余白を含まないInstagram Reels用MP4です。"
+title = "縦動画本体 — 1080×1920 MP4"
+description = "黒い左右余白を切り落とした9:16・20.05秒・無音のMP4です。"
+
+[[outputs]]
+id = "s9wJhAFIJtrpjQ_RvUAiJ"
+uri = "file://attached_assets/growth-story-instagram-vertical-preview.jpg"
+type = "image"
+title = "縦動画プレビュー（黒い左右余白なし）"
+description = "最終MP4から抜き出した1080×1920の実フレームです。"
