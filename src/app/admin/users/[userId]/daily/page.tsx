@@ -197,7 +197,7 @@ export default function AdminUserDailyPage({ params }: Props) {
                                             <td>{getDailyActivityLabel(log.activityType)}</td>
                                             <td>
                                                 <Link
-                                                    href={`/admin/users/${userId}/daily/${log.logDate.slice(0, 10)}`}
+                                                    href={`/admin/users/${encodeURIComponent(userId)}/daily/${log.logDate}`}
                                                     className="btn btn-secondary btn-small"
                                                     aria-label={`${formatDate(log.logDate)}の日誌を見る`}
                                                 >

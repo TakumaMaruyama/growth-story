@@ -15,8 +15,8 @@ export function nowJST(): Date {
 /**
  * 今日のJST日付をYYYY-MM-DD形式で取得
  */
-export function todayJST(): string {
-    return format(nowJST(), 'yyyy-MM-dd');
+export function todayJST(now = new Date()): string {
+    return format(toZonedTime(now, JST), 'yyyy-MM-dd');
 }
 
 /** YYYY-MM-DD を UTC 0時の Date に変換する。無効な日付は null。 */

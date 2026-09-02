@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { parseDateOnly } from '@/lib/date';
+import { formatJSTDate, parseDateOnly } from '@/lib/date';
 import { jsonResponse } from '@/lib/request';
 import { serializeAdminTargetUser } from '@/lib/user-name';
 
@@ -59,7 +59,10 @@ export async function GET(request: NextRequest, { params }: Props) {
         return jsonResponse({
             adminUser: { displayName: admin.displayName },
             targetUser: serializeAdminTargetUser(targetUser),
-            logs,
+            logs: logs.map((log) => ({
+                ...log,
+                logDate: formatJSTDate(log.logDate),
+            })),
             truncated,
         });
     } catch (error) {

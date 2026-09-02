@@ -477,7 +477,12 @@ export default function AdminUsersPage() {
                                             <tr key={target.id}>
                                                 <td>{target.loginId}</td>
                                                 <td>
-                                                    {target.fullName}
+                                                    <Link
+                                                        href={`/admin/users/${encodeURIComponent(target.id)}`}
+                                                        aria-label={`${target.fullName}さんの詳細を見る`}
+                                                    >
+                                                        {target.fullName}
+                                                    </Link>
                                                     {target.role === 'USER' && !target.hasRealName && (
                                                         <small className="legacy-name-note">本名未登録</small>
                                                     )}

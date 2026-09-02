@@ -5,6 +5,7 @@ import {
     formatJSTDate,
     parseDailyLogDate,
     parseDateOnly,
+    todayJST,
 } from './date';
 
 test('parseDateOnly accepts a real calendar date', () => {
@@ -27,6 +28,11 @@ test('parseDailyLogDate accepts today and past dates but rejects future dates in
     assert.ok(parseDailyLogDate('2026-08-19', now));
     assert.ok(parseDailyLogDate('2026-08-20', now));
     assert.equal(parseDailyLogDate('2026-08-21', now), null);
+});
+
+test('todayJST changes dates at JST midnight', () => {
+    assert.equal(todayJST(new Date('2026-09-01T14:59:59.999Z')), '2026-09-01');
+    assert.equal(todayJST(new Date('2026-09-01T15:00:00.000Z')), '2026-09-02');
 });
 
 test('differenceInDateOnlyDays calculates non-negative date-only gaps', () => {
