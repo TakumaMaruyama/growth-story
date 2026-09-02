@@ -129,7 +129,7 @@ export default function Home() {
                     <h1 id="welcome-title" className="page-title">おかえりなさい、{user?.displayName}さん</h1>
                     <p className="muted">今日の練習日誌も、大会への目標も、これまでの競泳人生も、自分の言葉で残していきましょう。</p>
                     <div className="button-row">
-                        <Link href={`/daily?date=${today}`} className="btn btn-primary">
+                        <Link href="/daily" className="btn btn-primary">
                             {isReadOnly ? '日誌を見る' : todayLog ? '今日の日誌を見直す' : '今日の日誌を書く'}
                         </Link>
                         <Link href={isReadOnly ? '/goals' : '/goals?add=1'} className="btn btn-secondary">
@@ -165,12 +165,12 @@ export default function Home() {
                                 <p>区分 {getDailyActivityLabel(todayLog.activityType)}</p>
                                 {todayLog.goodText && <p className="muted">{todayLog.goodText}</p>}
                             </div>
-                            <Link href={`/daily?date=${today}`} className="btn btn-secondary">日誌を開く</Link>
+                            <Link href="/daily" className="btn btn-secondary">日誌を開く</Link>
                         </div>
                     ) : (
                         <div className="stack">
                             <p className="muted">今日はまだ記録がありません。</p>
-                            {!isReadOnly && <Link href={`/daily?date=${today}`} className="btn btn-primary">日誌を書く</Link>}
+                            {!isReadOnly && <Link href="/daily" className="btn btn-primary">日誌を書く</Link>}
                         </div>
                     )}
                 </section>

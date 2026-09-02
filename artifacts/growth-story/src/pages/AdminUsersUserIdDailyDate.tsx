@@ -10,17 +10,23 @@ export default function AdminUserDailyDate({ params }: { params: { userId: strin
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [, setLocation] = useLocation();
+    const encodedUserId = encodeURIComponent(params.userId);
+    const encodedDate = encodeURIComponent(params.date);
 
     useEffect(() => {
         const loadDailyDate = async () => {
             try {
-                const response = await fetch(`/api/admin/users/${params.userId}/daily/${params.date}`, { credentials: 'include' });
+                const response = await fetch(`/api/admin/users/${encodedUserId}/daily/${encodedDate}`, { credentials: 'include' });
                 if (response.status === 401) {
-                    setLocation(loginHref('/admin/users', 'admin'));
+                    setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'admin'));
                     return;
                 }
-                if (response.status === 403 || response.status === 404) {
+                if (response.status === 403) {
                     setLocation('/admin/users');
+                    return;
+                }
+                if (response.status === 404) {
+                    setError('日誌が見つかりません');
                     return;
                 }
                 if (!response.ok) {
@@ -35,7 +41,7 @@ export default function AdminUserDailyDate({ params }: { params: { userId: strin
             }
         };
         loadDailyDate();
-    }, [params.userId, params.date, setLocation]);
+    }, [encodedUserId, encodedDate, setLocation]);
 
     if (loading) {
         return <><Nav isAdmin /><main className="container"><div className="loading-state">読み込み中...</div></main></>;
@@ -57,7 +63,7 @@ export default function AdminUserDailyDate({ params }: { params: { userId: strin
                         <h1 className="page-title">{dateObj ? formatJSTDisplay(dateObj) : params.date} の練習日誌</h1>
                     </div>
                     <div className="button-row">
-                        <Link href={`/admin/users/${targetUser.id}`} className="btn btn-secondary">
+                        <Link href={`/admin/users/${encodeURIComponent(targetUser.id)}`} className="btn btn-secondary">
                             ユーザー詳細へ戻る
                         </Link>
                     </div>

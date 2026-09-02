@@ -21,8 +21,13 @@ export function nowJST(): Date {
 /**
  * 今日のJST日付をYYYY-MM-DD形式で取得
  */
-export function todayJST(): string {
-    return format(nowJST(), 'yyyy-MM-dd');
+export function todayJST(now = new Date()): string {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: JST,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    const parts = Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 /** YYYY-MM-DD を UTC 0時の Date に変換する。無効な日付は null。 */
@@ -56,8 +61,7 @@ export function parseDailyLogDate(dateStr: string, now = new Date()): Date | nul
     const date = parseDateOnly(dateStr);
     if (!date) return null;
     
-    // Simplification for frontend logic
-    const today = parseDateOnly(format(nowJST(), 'yyyy-MM-dd'))!;
+    const today = parseDateOnly(todayJST(now))!;
     const earliest = parseDateOnly(MIN_DAILY_LOG_DATE)!;
 
     return date >= earliest && date <= today ? date : null;

@@ -24,6 +24,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
     const searchParams = new URLSearchParams(searchString);
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
+    const encodedUserId = encodeURIComponent(userId);
 
     const [user, setUser] = useState<UserInfo | null>(null);
     const [logs, setLogs] = useState<DailyLogItem[]>([]);
@@ -38,7 +39,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
                 if (to) q.set('to', to);
                 const queryStr = q.toString() ? `?${q.toString()}` : '';
                 
-                const res = await fetch(`/api/admin/users/${userId}/daily${queryStr}`, { credentials: 'include' });
+                const res = await fetch(`/api/admin/users/${encodedUserId}/daily${queryStr}`, { credentials: 'include' });
                 if (res.status === 401) {
                     setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'admin'));
                     return;
@@ -58,7 +59,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
             }
         };
         loadLogs();
-    }, [userId, from, to, setLocation]);
+    }, [encodedUserId, from, to, setLocation]);
 
     if (loading) return <><Nav isAdmin /><main className="container"><div className="loading-state">読み込み中...</div></main></>;
     if (error || !user) return <><Nav isAdmin /><main className="container"><div className="alert alert-danger">{error}</div></main></>;
@@ -73,7 +74,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
                         <h1 className="page-title">練習日誌一覧</h1>
                     </div>
                     <div className="button-row">
-                        <Link href={`/admin/users/${userId}`} className="btn btn-secondary">ユーザー詳細へ戻る</Link>
+                        <Link href={`/admin/users/${encodedUserId}`} className="btn btn-secondary">ユーザー詳細へ戻る</Link>
                     </div>
                 </header>
 
@@ -96,7 +97,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
                                             <td>{log.score}/10</td>
                                             <td>{getDailyActivityLabel(log.activityType)}</td>
                                             <td>
-                                                <Link href={`/admin/users/${userId}/daily/${log.logDate}`} className="btn btn-secondary btn-small">
+                                                <Link href={`/admin/users/${encodedUserId}/daily/${encodeURIComponent(log.logDate)}`} className="btn btn-secondary btn-small">
                                                     内容を見る
                                                 </Link>
                                             </td>

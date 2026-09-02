@@ -471,7 +471,12 @@ export default function AdminUsersPage() {
                                             <tr key={target.id}>
                                                 <td>{target.loginId}</td>
                                                 <td>
-                                                    {target.fullName}
+                                                    <Link
+                                                        href={`/admin/users/${encodeURIComponent(target.id)}`}
+                                                        aria-label={`${target.fullName}さんの詳細を見る`}
+                                                    >
+                                                        {target.fullName}
+                                                    </Link>
                                                     {target.role === 'USER' && !target.hasRealName && (
                                                         <small className="legacy-name-note">本名未登録</small>
                                                     )}
@@ -538,7 +543,7 @@ export default function AdminUsersPage() {
                                                         <summary className="btn btn-secondary btn-small">操作</summary>
                                                         <div className="admin-user-actions-menu">
                                                         <Link
-                                                            href={`/admin/users/${target.id}`}
+                                                            href={`/admin/users/${encodeURIComponent(target.id)}`}
                                                             className="btn btn-secondary btn-small"
                                                             aria-label={`${target.fullName}さんの詳細を見る`}
                                                         >

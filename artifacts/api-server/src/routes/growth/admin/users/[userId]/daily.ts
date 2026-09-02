@@ -1,7 +1,7 @@
 import type { NextRequest } from '@/lib/express-compat';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { parseDateOnly } from '@/lib/date';
+import { formatJSTDate, parseDateOnly } from '@/lib/date';
 import { jsonResponse } from '@/lib/request';
 import { serializeAdminTargetUser } from '@/lib/user-name';
 
@@ -54,7 +54,10 @@ export async function GET(request: NextRequest, { params }: Props) {
             },
         });
         const truncated = results.length > 200;
-        const logs = truncated ? results.slice(0, 200) : results;
+        const logs = (truncated ? results.slice(0, 200) : results).map((log) => ({
+            ...log,
+            logDate: formatJSTDate(log.logDate),
+        }));
 
         return jsonResponse({
             adminUser: { displayName: admin.displayName },
