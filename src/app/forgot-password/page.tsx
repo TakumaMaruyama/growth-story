@@ -11,7 +11,7 @@ export default function ForgotPasswordPage() {
                     <span className="brand-mark" aria-hidden="true">S</span>
                     <p className="eyebrow" style={{ marginTop: '0.75rem' }}>Password help</p>
                     <h1 className="page-title">パスワードを忘れた方</h1>
-                    <p className="muted">保護者から管理者へご連絡ください。</p>
+                    <p className="muted">保護者の方は、下のフォームから管理者へご連絡ください。</p>
                 </div>
 
                 <div className="card">
@@ -20,6 +20,13 @@ export default function ForgotPasswordPage() {
                         <p>再設定URLは発行から2日間有効で、1回だけ使用できます。</p>
                         <p>過去の記録を引き継ぐため、新規会員登録はしないでください。</p>
                     </div>
+                    <a
+                        href="https://docs.google.com/forms/d/e/1FAIpQLScMRZdQ7M89af3pgTpLa8IyKLgDxIXrc5WJfTqgS4IPDEBabg/viewform?usp=header"
+                        className="btn btn-primary btn-block"
+                        rel="noopener noreferrer"
+                    >
+                        管理者に問い合わせる
+                    </a>
                     <div className="auth-links">
                         <Link href="/login">ログインへ戻る</Link>
                     </div>

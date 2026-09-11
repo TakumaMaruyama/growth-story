@@ -2043,10 +2043,15 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
 
   .nav-topline {
     align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .account-actions {
+    margin-left: auto;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .account-actions .user-name {

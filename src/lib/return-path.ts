@@ -67,5 +67,7 @@ export function loginHref(
 export function postLoginDestination(role: unknown, returnPath: string | null): string | null {
     if (role !== 'USER' && role !== 'ADMIN') return null;
     const scope = role === 'ADMIN' ? 'admin' : 'user';
-    return sanitizeReturnPath(returnPath, scope) ?? defaultReturnPath(scope);
+    return sanitizeReturnPath(returnPath, scope)
+        ?? (role === 'ADMIN' ? sanitizeReturnPath(returnPath, 'user') : null)
+        ?? defaultReturnPath(scope);
 }

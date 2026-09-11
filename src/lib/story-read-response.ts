@@ -4,6 +4,7 @@ export interface StoryReadResponse {
     user: {
         id: string;
         displayName: string;
+        role: 'USER' | 'ADMIN';
         membershipStatus: 'ACTIVE' | 'WITHDRAWN';
     };
     story: {
@@ -39,6 +40,7 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
         || !value.user.id
         || typeof value.user.displayName !== 'string'
         || !value.user.displayName
+        || (value.user.role !== 'USER' && value.user.role !== 'ADMIN')
         || (value.user.membershipStatus !== 'ACTIVE' && value.user.membershipStatus !== 'WITHDRAWN')
     ) {
         return null;
@@ -49,6 +51,7 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
             user: {
                 id: value.user.id,
                 displayName: value.user.displayName,
+                role: value.user.role,
                 membershipStatus: value.user.membershipStatus,
             },
             story: null,
@@ -86,6 +89,7 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
         user: {
             id: value.user.id,
             displayName: value.user.displayName,
+            role: value.user.role,
             membershipStatus: value.user.membershipStatus,
         },
         story: { version: value.story.version, answers, legacyAnswerCount },

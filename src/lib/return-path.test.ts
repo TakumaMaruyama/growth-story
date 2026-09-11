@@ -52,7 +52,10 @@ test('login href encodes only sanitized non-default destinations', () => {
 test('post-login destination is revalidated against the authenticated role', () => {
     assert.equal(postLoginDestination('USER', '/daily?date=2026-08-01'), '/daily?date=2026-08-01');
     assert.equal(postLoginDestination('USER', '/admin/users/user-1'), '/');
-    assert.equal(postLoginDestination('ADMIN', '/story'), '/admin/users');
+    assert.equal(postLoginDestination('ADMIN', '/story'), '/story');
+    assert.equal(postLoginDestination('ADMIN', '/daily?date=2026-08-01'), '/daily?date=2026-08-01');
+    assert.equal(postLoginDestination('ADMIN', '//example.com'), '/admin/users');
+    assert.equal(postLoginDestination('ADMIN', null), '/admin/users');
     assert.equal(postLoginDestination('ADMIN', '/admin/users/user-1'), '/admin/users/user-1');
     assert.equal(postLoginDestination('unexpected', '/daily'), null);
 });

@@ -25,6 +25,12 @@ import { MAX_DAILY_TEXT_LENGTH } from '@/lib/limits';
 import { useUnsavedChangesWarning } from '@/hooks/useUnsavedChangesWarning';
 import { readTabDraft, removeTabDraft, writeTabDraft } from '@/lib/tab-draft-store';
 import { loginHref } from '@/lib/return-path';
+import { MIN_DAILY_LOG_DATE } from '@/lib/date';
+import {
+    DAILY_LOG_WRITE_WINDOW_CODE,
+    DAILY_LOG_WRITE_WINDOW_MESSAGE,
+    isDailyLogWritable,
+} from '@/lib/daily-log-window';
 import {
     dailyActivityFromPracticed,
     isDailyActivityType,
@@ -34,6 +40,7 @@ import {
 interface UserInfo {
     id: string;
     displayName: string;
+    role: 'USER' | 'ADMIN';
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
@@ -256,6 +263,9 @@ function DailyLogPageContent() {
     const [loadError, setLoadError] = useState('');
     const [invalidDate, setInvalidDate] = useState(false);
     const [reloadToken, setReloadToken] = useState(0);
+    const isWithdrawn = user?.membershipStatus === 'WITHDRAWN';
+    const isOutsideWriteWindow = Boolean(loadedDate && todayDate && !isDailyLogWritable(loadedDate, todayDate));
+    const isReadOnly = isWithdrawn || isOutsideWriteWindow;
 
     const loadedDateRef = useRef<string | null>(null);
     const loadedRequestKeyRef = useRef<string | null>(null);
@@ -337,10 +347,6 @@ function DailyLogPageContent() {
                     router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
-                if (response.status === 403) {
-                    router.replace('/admin/users');
-                    return;
-                }
                 if (
                     !response.ok
                     || !data?.user
@@ -376,7 +382,8 @@ function DailyLogPageContent() {
                 }
                 const savedDraft = readDailyDraft(dailyDraftKey(data.user.id, data.date));
                 const draft = savedDraft.draft;
-                const readOnly = data.user.membershipStatus === 'WITHDRAWN';
+                const readOnly = data.user.membershipStatus === 'WITHDRAWN'
+                    || !isDailyLogWritable(data.date, data.today);
                 const initialLog = readOnly ? nextLog : draft?.log ?? nextLog;
                 const hasDraftChanges = !logsAreEqual(initialLog, nextLog);
                 const hasStaleDraft = Boolean(
@@ -430,14 +437,14 @@ function DailyLogPageContent() {
     }, [reloadToken, requestKey, requestedDate, router]);
 
     useEffect(() => {
-        if (!user || user.membershipStatus === 'WITHDRAWN' || !loadedDate || loading) return;
+        if (!user || isReadOnly || !loadedDate || loading) return;
         const key = dailyDraftKey(user.id, loadedDate);
         const available = dirty
             ? writeDailyDraft(key, { baseRevision: baseRevisionRef.current, log })
             : removeDailyDraft(key);
         const timeout = window.setTimeout(() => setDraftStorageAvailable(available), 0);
         return () => window.clearTimeout(timeout);
-    }, [dirty, loadedDate, loading, log, user]);
+    }, [dirty, isReadOnly, loadedDate, loading, log, user]);
 
     const confirmPageExit = useUnsavedChangesWarning(dirty);
     const oversizedFields = PROMPT_DEFINITIONS
@@ -455,9 +462,9 @@ function DailyLogPageContent() {
     const activePromptDefinition = PROMPT_DEFINITIONS.find(
         (prompt) => prompt.key === activePrompt,
     ) ?? PROMPT_DEFINITIONS[0];
-    const isReadOnly = user?.membershipStatus === 'WITHDRAWN';
 
     const updateLog = <Key extends keyof LogData>(key: Key, value: LogData[Key]) => {
+        if (isReadOnly) return;
         const next = { ...log, [key]: value };
         const hasChanges = !logsAreEqual(next, baselineLogRef.current);
         dirtyRef.current = hasChanges;
@@ -524,7 +531,7 @@ function DailyLogPageContent() {
         event.preventDefault();
 
         if (isReadOnly) {
-            setError('退会中のため、新規入力や更新はできません。');
+            setError(isWithdrawn ? '退会中のため、新規入力や更新はできません。' : DAILY_LOG_WRITE_WINDOW_MESSAGE);
             return;
         }
 
@@ -560,6 +567,7 @@ function DailyLogPageContent() {
             const data = await response.json().catch(() => null) as {
                 code?: string;
                 error?: string;
+                today?: string;
                 revision?: number;
                 created?: boolean;
                 eligibleRecordCount?: number;
@@ -571,6 +579,11 @@ function DailyLogPageContent() {
                 return;
             }
             if (!response.ok) {
+                if (data?.code === DAILY_LOG_WRITE_WINDOW_CODE) {
+                    if (data.today) setTodayDate(data.today);
+                    setError(`${DAILY_LOG_WRITE_WINDOW_MESSAGE} 現在の入力は未保存です。必要な内容をコピーしてください。`);
+                    return;
+                }
                 if (response.status === 409) {
                     setConflictMessage(data?.error ?? '別の画面で日誌が更新されました。最新の内容を読み込んでください。');
                     return;
@@ -645,7 +658,7 @@ function DailyLogPageContent() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.role === 'ADMIN'} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-quick-log">
                 <div className="quick-log-header">
                     <div className="quick-date-picker">
@@ -658,6 +671,7 @@ function DailyLogPageContent() {
                                     id="date"
                                     className="quick-date-input"
                                     aria-label="表示する日付を選択"
+                                    min={MIN_DAILY_LOG_DATE}
                                     max={todayDate ?? undefined}
                                     value={loadedDate ?? ''}
                                     onChange={(event) => handleDateChange(event.target.value)}
@@ -666,7 +680,7 @@ function DailyLogPageContent() {
                                 />
                             </span>
                         </label>
-                        <p className="quick-date-hint">カレンダーを押して、今日までの日付を選択できます</p>
+                        <p className="quick-date-hint">記入・編集は今日から7日前まで。過去の記録もカレンダーから閲覧できます。</p>
                     </div>
                     <h1 className="quick-log-title">
                         {loadedDate && loadedDate === todayDate ? '今日の30秒ログ' : 'この日の30秒ログ'}
@@ -688,9 +702,15 @@ function DailyLogPageContent() {
                     </div>
                 ) : (
                     <>
-                        {isReadOnly && (
+                        {isWithdrawn && (
                             <div className="alert alert-warning" role="status">
                                 退会中のため、日誌は閲覧のみです。利用再開は管理者へご連絡ください。
+                            </div>
+                        )}
+                        {isOutsideWriteWindow && (
+                            <div className="alert alert-info" role="status">
+                                <p>{DAILY_LOG_WRITE_WINDOW_MESSAGE}</p>
+                                <Link href="/daily">今日の日誌を開く</Link>
                             </div>
                         )}
                         <section
@@ -969,7 +989,7 @@ function DailyLogPageContent() {
                             <div className="quick-save-area">
                                 <div className="quick-save-feedback" aria-live="polite">
                                     {isReadOnly
-                                        ? <span>退会中のため閲覧のみです</span>
+                                        ? <span>{isWithdrawn ? '退会中のため閲覧のみです' : '記入期間外のため閲覧のみです'}</span>
                                         : dirty
                                             ? <span>下書きを自動保存しています</span>
                                             : !message && <span>変更はありません</span>}

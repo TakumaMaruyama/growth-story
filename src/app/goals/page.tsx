@@ -33,6 +33,7 @@ type EditableGoalField = 'title' | 'details' | 'targetDate';
 interface UserInfo {
     id: string;
     displayName: string;
+    role: 'USER' | 'ADMIN';
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
@@ -492,15 +493,12 @@ export default function GoalsPage() {
                     router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
-                if (response.status === 403) {
-                    router.replace('/admin/users');
-                    return;
-                }
                 if (
                     !response.ok
                     || !data?.user
                     || typeof data.user.id !== 'string'
                     || typeof data.user.displayName !== 'string'
+                    || (data.user.role !== 'USER' && data.user.role !== 'ADMIN')
                     || (data.user.membershipStatus !== 'ACTIVE' && data.user.membershipStatus !== 'WITHDRAWN')
                     || !Array.isArray(data.goals)
                     || !Array.isArray(data.archivedGoals)
@@ -994,7 +992,7 @@ export default function GoalsPage() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.role === 'ADMIN'} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-narrow goals-page">
                 <header className="goals-page-header">
                     <div className="goals-page-title-row">

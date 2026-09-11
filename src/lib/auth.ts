@@ -104,13 +104,11 @@ export async function getCurrentUser() {
     return session?.user ?? null;
 }
 
+// Personal pages always use this account's own id, including administrators.
 export async function requireUser(returnPath = '/') {
     const user = await getCurrentUser();
     if (!user) {
         redirect(loginHref(returnPath, 'user'));
-    }
-    if (user.role !== 'USER') {
-        redirect('/admin/users');
     }
     return user;
 }

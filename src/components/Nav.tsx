@@ -15,6 +15,7 @@ import { clearTabDrafts } from '@/lib/tab-draft-store';
 interface NavProps {
     userName?: string;
     isAdmin?: boolean;
+    canSwitchMode?: boolean;
     beforeLogout?: () => boolean;
 }
 
@@ -28,7 +29,7 @@ const USER_LINKS = [
 
 const ADMIN_LINKS = [{ href: '/admin/users', label: 'ユーザー管理' }] as const;
 
-export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProps) {
+export default function Nav({ userName, isAdmin = false, canSwitchMode = false, beforeLogout }: NavProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [loggingOut, setLoggingOut] = useState(false);
@@ -68,6 +69,14 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
                     </Link>
                     <div className="account-actions">
                         {userName && <span className="user-name">{userName}</span>}
+                        {(isAdmin || canSwitchMode) && (
+                            <Link
+                                href={isAdmin ? '/' : '/admin/users'}
+                                className="btn btn-secondary btn-small"
+                            >
+                                {isAdmin ? '自分のページへ' : '管理画面へ'}
+                            </Link>
+                        )}
                         <button
                             type="button"
                             onClick={handleLogout}

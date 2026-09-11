@@ -29,9 +29,6 @@ interface Props {
 async function authorizeWrite() {
     const user = await getCurrentUser();
     if (!user) return { response: jsonResponse({ error: '認証が必要です' }, 401) } as const;
-    if (user.role !== 'USER') {
-        return { response: jsonResponse({ error: 'この機能は選手専用です' }, 403) } as const;
-    }
     if (!canMemberWrite(user)) {
         return {
             response: jsonResponse({

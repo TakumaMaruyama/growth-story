@@ -22,6 +22,7 @@ import type { StoryQuestionNo } from '@/lib/story-questions';
 interface UserInfo {
     id: string;
     displayName: string;
+    role: 'USER' | 'ADMIN';
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
 
@@ -172,10 +173,6 @@ export default function StoryEditPage() {
                 const raw: unknown = await response.json().catch(() => null);
                 if (response.status === 401) {
                     router.replace(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
-                    return;
-                }
-                if (response.status === 403) {
-                    router.replace('/admin/users');
                     return;
                 }
                 if (!response.ok) {
@@ -336,7 +333,7 @@ export default function StoryEditPage() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.role === 'ADMIN'} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-narrow">
                 <div className="page-header">
                     <div>

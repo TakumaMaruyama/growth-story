@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import LoginForm from '@/components/LoginForm';
 import { getCurrentUser } from '@/lib/auth';
-import { sanitizeReturnPath } from '@/lib/return-path';
+import { postLoginDestination, sanitizeReturnPath } from '@/lib/return-path';
 
 export const metadata: Metadata = { title: 'ログイン' };
 
@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: Props) {
     const returnTo = sanitizeReturnPath((await searchParams).next, 'user');
     const user = await getCurrentUser();
     if (user) {
-        redirect(user.role === 'ADMIN' ? '/admin/users' : (returnTo ?? '/'));
+        redirect(postLoginDestination(user.role, returnTo) ?? '/');
     }
 
     return <LoginForm returnTo={returnTo} />;

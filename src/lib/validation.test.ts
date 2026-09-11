@@ -1,3 +1,4 @@
+import { todayJST } from './date';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -177,7 +178,7 @@ test('login validation preserves access for credentials created before current l
 
 test('daily log validation requires strict dates, integer scores, activity types and bounded text', () => {
     const valid = parseDailyLogInput({
-        date: '2026-08-01',
+        date: todayJST(),
         baseRevision: null,
         score: 8,
         activityType: 'COMPETITION',
@@ -189,7 +190,7 @@ test('daily log validation requires strict dates, integer scores, activity types
     if (valid.ok) assert.equal(valid.value.activityType, 'COMPETITION');
 
     const legacy = parseDailyLogInput({
-        date: '2026-08-01',
+        date: todayJST(),
         baseRevision: null,
         score: 8,
         practiced: true,
@@ -198,21 +199,21 @@ test('daily log validation requires strict dates, integer scores, activity types
     if (legacy.ok) assert.equal(legacy.value.activityType, 'PRACTICE');
 
     assert.equal(parseDailyLogInput({ date: '2026-02-30', baseRevision: null, score: 8, practiced: true }).ok, false);
-    assert.equal(parseDailyLogInput({ date: '2026-08-01', baseRevision: null, score: '8', practiced: true }).ok, false);
-    assert.equal(parseDailyLogInput({ date: '2026-08-01', baseRevision: null, score: 8.5, practiced: true }).ok, false);
+    assert.equal(parseDailyLogInput({ date: todayJST(), baseRevision: null, score: '8', practiced: true }).ok, false);
+    assert.equal(parseDailyLogInput({ date: todayJST(), baseRevision: null, score: 8.5, practiced: true }).ok, false);
     assert.equal(parseDailyLogInput({ date: '1969-12-31', baseRevision: null, score: 8, practiced: true }).ok, false);
-    assert.equal(parseDailyLogInput({ date: '2026-08-01', baseRevision: 'invalid', score: 8, practiced: true }).ok, false);
-    assert.equal(parseDailyLogInput({ date: '2026-08-01', baseRevision: null, score: 8, activityType: 'MEET' }).ok, false);
-    assert.equal(parseDailyLogInput({ date: '2026-08-01', baseRevision: null, score: 8 }).ok, false);
+    assert.equal(parseDailyLogInput({ date: todayJST(), baseRevision: 'invalid', score: 8, practiced: true }).ok, false);
+    assert.equal(parseDailyLogInput({ date: todayJST(), baseRevision: null, score: 8, activityType: 'MEET' }).ok, false);
+    assert.equal(parseDailyLogInput({ date: todayJST(), baseRevision: null, score: 8 }).ok, false);
     assert.equal(parseDailyLogInput({
-        date: '2026-08-01',
+        date: todayJST(),
         baseRevision: null,
         score: 8,
         activityType: 'COMPETITION',
         practiced: false,
     }).ok, false);
     assert.equal(parseDailyLogInput({
-        date: '2026-08-01',
+        date: todayJST(),
         baseRevision: null,
         score: 8,
         activityType: 'PRACTICE',

@@ -6,6 +6,7 @@ import {
     type DailyLogBadgeReachCount,
 } from './daily-log-badges';
 import { assertMemberWritableInTransaction } from './member-access';
+import { DailyLogWriteWindowError, isDailyLogWritable } from './daily-log-window';
 
 export class DailyLogConflictError extends Error {
     constructor() {
@@ -73,6 +74,10 @@ export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision
     try {
         return await prisma.$transaction(async (tx) => {
             await assertMemberWritableInTransaction(tx, userId);
+            // 待機中に日本時間の日付が変わった場合も、保存直前の期間を適用する。
+            if (!isDailyLogWritable(logDate.toISOString().slice(0, 10))) {
+                throw new DailyLogWriteWindowError();
+            }
 
             if (baseRevision !== null) {
                 const updated = await tx.dailyLog.updateManyAndReturn({

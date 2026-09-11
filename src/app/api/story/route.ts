@@ -22,7 +22,6 @@ import {
 export async function GET() {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
 
     try {
         const story = await prisma.storyVersion.findFirst({
@@ -41,6 +40,7 @@ export async function GET() {
             user: {
                 id: user.id,
                 displayName: user.displayName,
+                role: user.role,
                 membershipStatus: user.membershipStatus,
             },
             story,
@@ -54,7 +54,6 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,

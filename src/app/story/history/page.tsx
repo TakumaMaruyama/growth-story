@@ -49,7 +49,7 @@ export default async function StoryHistoryPage({ searchParams }: Props) {
 
     return (
         <>
-            <Nav userName={user.displayName} />
+            <Nav userName={user.displayName} canSwitchMode={user.role === 'ADMIN'} />
             <main id="main-content" className="container">
                 <div className="page-header">
                     <div>

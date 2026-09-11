@@ -10,7 +10,8 @@ import { ListBulletsIcon } from '@phosphor-icons/react/dist/ssr/ListBullets';
 import { NotePencilIcon } from '@phosphor-icons/react/dist/ssr/NotePencil';
 import { TargetIcon } from '@phosphor-icons/react/dist/ssr/Target';
 import { requireUser } from '@/lib/auth';
-import { formatJSTDate, formatJSTDateTime, formatJSTDisplay, parseDailyLogDate, parseDateOnly, todayJST } from '@/lib/date';
+import { isDailyLogWritable } from '@/lib/daily-log-window';
+import { formatJSTDate, formatJSTDateTime, formatJSTDisplay, parseDateOnly, todayJST } from '@/lib/date';
 import { getDailyActivityLabel, type DailyActivityType } from '@/lib/daily-activity';
 import { getCompetitionGoalDisplayValues } from '@/lib/competition-goal-display';
 import {
@@ -296,7 +297,7 @@ function RecordList({ items, start = 1 }: { items: RecordItem[]; start?: number 
 
 function EmptyActions({ isReadOnly, date }: { isReadOnly: boolean; date?: string }) {
     if (isReadOnly) return null;
-    const requestedDailyDate = date && parseDailyLogDate(date) ? date : null;
+    const requestedDailyDate = date && isDailyLogWritable(date) ? date : null;
     return (
         <div className="record-empty-actions">
             <Link href={requestedDailyDate ? `/daily?date=${encodeURIComponent(requestedDailyDate)}` : '/daily'} className="btn btn-primary">
@@ -592,7 +593,7 @@ export default async function TimelinePage({ searchParams }: TimelinePageProps) 
 
     return (
         <>
-            <Nav userName={user.displayName} />
+            <Nav userName={user.displayName} canSwitchMode={user.role === 'ADMIN'} />
             <main id="main-content" className="container record-page">
                 <header className="record-page-header">
                     <div>

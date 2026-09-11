@@ -24,7 +24,7 @@ export default async function StoryVersionPage({ params }: Props) {
 
     return (
         <>
-            <Nav userName={user.displayName} />
+            <Nav userName={user.displayName} canSwitchMode={user.role === 'ADMIN'} />
             <main id="main-content" className="container container-narrow">
                 <div className="page-header">
                     <div>

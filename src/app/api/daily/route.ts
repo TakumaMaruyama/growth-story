@@ -4,6 +4,11 @@ import { getCurrentUser } from '@/lib/auth';
 import { parseDailyLogDate, parseDateOnly, todayJST } from '@/lib/date';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseDailyLogInput } from '@/lib/validation';
+import {
+    DAILY_LOG_WRITE_WINDOW_CODE,
+    DAILY_LOG_WRITE_WINDOW_MESSAGE,
+    DailyLogWriteWindowError,
+} from '@/lib/daily-log-window';
 import { consumeRateLimits, type RateLimitRule } from '@/lib/rate-limit';
 import {
     countDailyLogBadgeReachUsers,
@@ -21,7 +26,6 @@ import {
 export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
 
     const today = todayJST();
     const date = request.nextUrl.searchParams.get('date') || today;
@@ -69,6 +73,7 @@ export async function GET(request: NextRequest) {
             user: {
                 id: user.id,
                 displayName: user.displayName,
+                role: user.role,
                 membershipStatus: user.membershipStatus,
             },
             date,
@@ -87,7 +92,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -115,7 +119,14 @@ export async function POST(request: NextRequest) {
         const json = await readJsonObject(request);
         if (!json.ok) return json.response;
         const input = parseDailyLogInput(json.data);
-        if (!input.ok) return jsonResponse({ error: input.error }, 400);
+        if (!input.ok) {
+            return jsonResponse({
+                error: input.error,
+                ...(input.error === DAILY_LOG_WRITE_WINDOW_MESSAGE
+                    ? { code: DAILY_LOG_WRITE_WINDOW_CODE, today: todayJST() }
+                    : {}),
+            }, 400);
+        }
 
         const log = await saveDailyLog({ userId: user.id, ...input.value });
         const todayDate = parseDateOnly(todayJST())!;
@@ -132,6 +143,13 @@ export async function POST(request: NextRequest) {
             badgeReachCounts,
         });
     } catch (error) {
+        if (error instanceof DailyLogWriteWindowError) {
+            return jsonResponse({
+                error: DAILY_LOG_WRITE_WINDOW_MESSAGE,
+                code: DAILY_LOG_WRITE_WINDOW_CODE,
+                today: todayJST(),
+            }, 400);
+        }
         if (error instanceof MembershipWriteBlockedError) {
             return jsonResponse({
                 error: MEMBERSHIP_WITHDRAWN_MESSAGE,

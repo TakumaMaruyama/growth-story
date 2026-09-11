@@ -1,4 +1,5 @@
 import { parseDailyLogDate } from './date';
+import { DAILY_LOG_WRITE_WINDOW_MESSAGE, isDailyLogWritable } from './daily-log-window';
 import {
   dailyActivityFromPracticed,
   isDailyActivityType,
@@ -252,6 +253,7 @@ export function parseDailyLogInput(body: Record<string, unknown>): ValidationRes
   const date = typeof body.date === 'string' ? body.date : '';
   const logDate = parseDailyLogDate(date);
   if (!logDate) return failure('日付は1970年以降、今日までで入力してください');
+  if (!isDailyLogWritable(date)) return failure(DAILY_LOG_WRITE_WINDOW_MESSAGE);
 
   let baseRevision: number | null = null;
   if (body.baseRevision !== null) {

@@ -23,7 +23,6 @@ interface Props {
 export async function DELETE(request: NextRequest, { params }: Props) {
     const user = await getCurrentUser();
     if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,

@@ -80,7 +80,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Nav userName={user.displayName} />
+      <Nav userName={user.displayName} canSwitchMode={user.role === 'ADMIN'} />
       <main id="main-content" className="container">
         {isReadOnly && (
           <div className="alert alert-warning" role="status">

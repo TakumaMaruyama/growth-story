@@ -1,3 +1,4 @@
+import { parseDateOnly, todayJST } from '../lib/date';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
@@ -117,7 +118,7 @@ test('security database invariants', async (context) => {
             },
             select: { id: true },
         });
-        const logDate = new Date('2026-01-15T00:00:00.000Z');
+        const logDate = parseDateOnly(todayJST())!;
 
         try {
             await saveDailyLog({
@@ -201,8 +202,8 @@ test('security database invariants', async (context) => {
             },
             select: { id: true },
         });
-        const throughDate = new Date('2026-01-15T00:00:00.000Z');
-        const futureDate = new Date('2026-01-16T00:00:00.000Z');
+        const throughDate = parseDateOnly(todayJST())!;
+        const futureDate = new Date(throughDate.getTime() + 86_400_000);
 
         try {
             await saveDailyLog({
@@ -215,16 +216,14 @@ test('security database invariants', async (context) => {
                 improveText: null,
                 tomorrowText: null,
             });
-            await saveDailyLog({
+            // Seed a legacy future record directly; the write service now rejects these.
+            await prisma.dailyLog.create({ data: {
                 userId: user.id,
                 logDate: futureDate,
-                baseRevision: null,
                 score: 7,
                 activityType: 'COMPETITION',
-                goodText: null,
-                improveText: null,
-                tomorrowText: null,
-            });
+                practiced: true,
+            } });
 
             assert.equal(await countEligibleDailyLogs(user.id, throughDate), 1);
 
@@ -584,7 +583,7 @@ test('security database invariants', async (context) => {
             },
             select: { id: true },
         });
-        const logDate = new Date('2026-04-01T00:00:00.000Z');
+        const logDate = parseDateOnly(todayJST())!;
 
         try {
             await createSession(member.id);
@@ -654,7 +653,7 @@ test('security database invariants', async (context) => {
             await assert.rejects(
                 () => saveDailyLog({
                     userId: member.id,
-                    logDate: new Date('2026-04-02T00:00:00.000Z'),
+                    logDate: new Date(logDate.getTime() - 86_400_000),
                     baseRevision: null,
                     score: 8,
                     activityType: 'PRACTICE',
