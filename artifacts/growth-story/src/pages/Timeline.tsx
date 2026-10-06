@@ -18,6 +18,7 @@ import {
     type RecordTypeFilter,
 } from '../lib/records';
 import Nav from '../components/Nav';
+import { loginHref } from '../lib/return-path';
 
 const PAGE_SIZE = 30;
 
@@ -144,7 +145,7 @@ function EmptyActions({ isReadOnly }: { isReadOnly: boolean }) {
 }
 
 function CalendarView({ state, today, items, undatedGoalCount, isReadOnly }: any) {
-    const monthKey = state.month || formatJSTDate(today).slice(0, 7);
+    const monthKey = state.month || today.slice(0, 7);
     const range = getRecordCalendarDateRange(monthKey);
     if (!range) return null;
     const days = getRecordCalendarDays(monthKey);
@@ -187,7 +188,7 @@ function CalendarView({ state, today, items, undatedGoalCount, isReadOnly }: any
                     </span>
                 )}
                 <Link
-                    href={recordHref(state, { month: formatJSTDate(today).slice(0, 7) })}
+                    href={recordHref(state, { month: today.slice(0, 7) })}
                     className="record-today-link"
                 >
                     今月
@@ -371,14 +372,7 @@ export default function Timeline() {
     const searchParams = new URLSearchParams(searchString);
     const today = todayJST();
     
-    // Simulate parseRecordSearchParams logic here directly
-    const state = {
-        view: (searchParams.get('view') === 'list' ? 'list' : 'calendar') as 'list' | 'calendar',
-        type: (searchParams.get('type') || 'all') as 'all' | 'daily' | 'goal' | 'story',
-        month: searchParams.get('month') || '',
-        date: searchParams.get('date') || '',
-        page: parseInt(searchParams.get('page') || '1', 10),
-    };
+    const state = parseRecordSearchParams(Object.fromEntries(searchParams), today);
 
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -391,7 +385,7 @@ export default function Timeline() {
             try {
                 const response = await fetch(`/api/timeline?${searchParams.toString()}`, { credentials: 'include' });
                 if (response.status === 401) {
-                    setLocation('/login');
+                    setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
                 if (response.status === 403) {
@@ -452,7 +446,7 @@ export default function Timeline() {
 
     return (
         <>
-            <Nav userName={user.displayName} />
+            <Nav userName={user.displayName} canSwitchMode={user?.canSwitchToAdmin === true} />
             <main id="main-content" className="container record-page">
                 <header className="record-page-header">
                     <div>

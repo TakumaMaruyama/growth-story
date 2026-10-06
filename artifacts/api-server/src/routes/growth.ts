@@ -21,6 +21,7 @@ import * as adminGoals from "./growth/admin/users/[userId]/goals";
 import * as membership from "./growth/admin/users/[userId]/membership";
 import * as resetLink from "./growth/admin/users/[userId]/password-reset";
 import * as toggle from "./growth/admin/users/[userId]/toggle";
+import { accountSwitchCapability } from "@/lib/personal-access";
 import * as read from "./growth/read";
 
 type Endpoint = (request: ReturnType<typeof requestFromExpress>, context: { params: Promise<Record<string, string>> }) => Promise<ApiResponse>;
@@ -42,6 +43,7 @@ function endpoint(handler: Function) {
 
 const router = Router();
 
+router.get("/auth/account-switch", endpoint(accountSwitchCapability));
 router.post("/auth/login", endpoint(login.POST));
 router.post("/auth/logout", endpoint(logout.POST));
 router.post("/auth/password-reset", endpoint(passwordReset.POST));

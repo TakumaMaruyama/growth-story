@@ -1,5 +1,5 @@
 import type { NextRequest } from '@/lib/express-compat';
-import { getCurrentUser } from '@/lib/auth';
+import { authorizePersonalRequest, personalAccessErrorResponse } from '@/lib/personal-access';
 import { serializeCompetitionGoal } from '@/lib/competition-goal-contract';
 import { competitionGoalWriteRateLimitRules } from '@/lib/competition-goal-rate-limit';
 import {
@@ -26,12 +26,10 @@ interface Props {
     params: Promise<{ goalId: string }>;
 }
 
-async function authorizeWrite() {
-    const user = await getCurrentUser();
-    if (!user) return { response: jsonResponse({ error: '認証が必要です' }, 401) } as const;
-    if (user.role !== 'USER') {
-        return { response: jsonResponse({ error: 'この機能は選手専用です' }, 403) } as const;
-    }
+async function authorizeWrite(request: NextRequest) {
+    const authorization = await authorizePersonalRequest(request);
+    if ('response' in authorization) return { response: authorization.response } as const;
+    const user = authorization.access.subject;
     if (!canMemberWrite(user)) {
         return {
             response: jsonResponse({
@@ -50,10 +48,12 @@ async function authorizeWrite() {
         response.headers.set('Retry-After', String(rateLimit.retryAfterSeconds));
         return { response } as const;
     }
-    return { user } as const;
+    return { user, writeContext: authorization.access.writeContext } as const;
 }
 
 function goalWriteErrorResponse(error: unknown) {
+    const denied = personalAccessErrorResponse(error);
+    if (denied) return denied;
     if (error instanceof MembershipWriteBlockedError) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -77,7 +77,7 @@ function goalWriteErrorResponse(error: unknown) {
 }
 
 export async function PATCH(request: NextRequest, { params }: Props) {
-    const authorization = await authorizeWrite();
+    const authorization = await authorizeWrite(request);
     if ('response' in authorization) return authorization.response;
 
     try {
@@ -87,7 +87,7 @@ export async function PATCH(request: NextRequest, { params }: Props) {
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
         const { goalId } = await params;
-        const goal = await updateCompetitionGoal(authorization.user.id, goalId, input.value);
+        const goal = await updateCompetitionGoal(authorization.user.id, goalId, input.value, authorization.writeContext);
         return jsonResponse({
             success: true,
             goal: serializeCompetitionGoal(goal),
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Props) {
-    const authorization = await authorizeWrite();
+    const authorization = await authorizeWrite(request);
     if ('response' in authorization) return authorization.response;
 
     try {
@@ -116,6 +116,7 @@ export async function DELETE(request: NextRequest, { params }: Props) {
             authorization.user.id,
             goalId,
             input.value.baseRevision,
+            authorization.writeContext,
         );
         return jsonResponse({ success: true, goal: serializeCompetitionGoal(goal) });
     } catch (error) {

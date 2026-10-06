@@ -3,6 +3,8 @@ import { STORY_QUESTIONS } from './story-questions';
 export interface StoryReadResponse {
     user: {
         id: string;
+        role: 'USER';
+        canSwitchToAdmin: boolean;
         displayName: string;
         membershipStatus: 'ACTIVE' | 'WITHDRAWN';
     };
@@ -37,6 +39,8 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
     if (
         typeof value.user.id !== 'string'
         || !value.user.id
+        || (value.user.role !== undefined && value.user.role !== 'USER')
+        || (value.user.canSwitchToAdmin !== undefined && typeof value.user.canSwitchToAdmin !== 'boolean')
         || typeof value.user.displayName !== 'string'
         || !value.user.displayName
         || (value.user.membershipStatus !== 'ACTIVE' && value.user.membershipStatus !== 'WITHDRAWN')
@@ -48,6 +52,8 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
         return {
             user: {
                 id: value.user.id,
+                role: 'USER',
+                canSwitchToAdmin: value.user.canSwitchToAdmin === true,
                 displayName: value.user.displayName,
                 membershipStatus: value.user.membershipStatus,
             },
@@ -85,6 +91,8 @@ export function parseStoryReadResponse(value: unknown): StoryReadResponse | null
     return {
         user: {
             id: value.user.id,
+            role: 'USER',
+                canSwitchToAdmin: value.user.canSwitchToAdmin === true,
             displayName: value.user.displayName,
             membershipStatus: value.user.membershipStatus,
         },

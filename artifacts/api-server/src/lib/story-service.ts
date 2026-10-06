@@ -1,3 +1,4 @@
+import type { PersonalWriteContext } from './personal-access';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { MAX_STORY_VERSIONS } from './limits';
@@ -23,11 +24,11 @@ function storiesMatch(
     return next.answers.every((answer) => currentAnswers.get(answer.questionNo) === answer.answerText);
 }
 
-export async function saveStoryVersion(userId: string, input: StoryInput) {
+export async function saveStoryVersion(userId: string, input: StoryInput, authorization: PersonalWriteContext) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
             return await prisma.$transaction(async (tx) => {
-                await assertMemberWritableInTransaction(tx, userId);
+                await assertMemberWritableInTransaction(tx, userId, authorization);
                 const [versionCount, latestVersion] = await Promise.all([
                     tx.storyVersion.count({ where: { userId } }),
                     tx.storyVersion.findFirst({

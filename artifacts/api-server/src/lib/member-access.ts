@@ -1,5 +1,6 @@
 import { Prisma, type MembershipStatus } from '@prisma/client';
 import { prisma } from './prisma';
+import { assertPersonalWriteAuthorization, type PersonalWriteContext } from './personal-access';
 
 export const MEMBERSHIP_WITHDRAWN_CODE = 'MEMBERSHIP_WITHDRAWN';
 export const MEMBERSHIP_WITHDRAWN_MESSAGE = '退会中のため、新規入力や更新はできません。過去の記録は閲覧できます。';
@@ -31,8 +32,10 @@ export async function lockMemberWriteState(
 export async function assertMemberWritableInTransaction(
     tx: Prisma.TransactionClient,
     userId: string,
+    authorization: PersonalWriteContext,
 ): Promise<void> {
     await lockMemberWriteState(tx, userId);
+    await assertPersonalWriteAuthorization(tx, userId, authorization);
     const user = await tx.user.findUnique({
         where: { id: userId },
         select: { membershipStatus: true },

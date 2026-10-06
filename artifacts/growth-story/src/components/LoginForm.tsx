@@ -34,7 +34,8 @@ export default function LoginForm({ adminOnly = false, returnTo = null }: LoginF
                 return;
             }
 
-            const destination = postLoginDestination(data?.role, returnTo);
+            const requestedReturnTo = new URLSearchParams(window.location.search).get('next') ?? returnTo;
+            const destination = postLoginDestination(data?.role, requestedReturnTo);
             if (!destination) {
                 setError('ログイン結果を確認できませんでした。もう一度お試しください');
                 return;

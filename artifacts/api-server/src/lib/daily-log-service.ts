@@ -1,3 +1,4 @@
+import type { PersonalWriteContext } from './personal-access';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { isPracticedActivity, type DailyActivityType } from './daily-activity';
@@ -50,7 +51,7 @@ export async function countDailyLogBadgeReachUsers(
     );
 }
 
-export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision: number }> {
+export async function saveDailyLog(input: DailyLogSaveInput, authorization: PersonalWriteContext): Promise<{ revision: number }> {
     const {
         userId,
         logDate,
@@ -72,7 +73,7 @@ export async function saveDailyLog(input: DailyLogSaveInput): Promise<{ revision
 
     try {
         return await prisma.$transaction(async (tx) => {
-            await assertMemberWritableInTransaction(tx, userId);
+            await assertMemberWritableInTransaction(tx, userId, authorization);
 
             if (baseRevision !== null) {
                 const updated = await tx.dailyLog.updateManyAndReturn({
