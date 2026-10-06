@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { authorizePersonalRequest } from "@/lib/personal-access";
 import { getCurrentUser } from "@/lib/auth";
 import { jsonResponse } from "@/lib/request";
 import { parseDateOnly, todayJST } from "@/lib/date";
@@ -7,27 +8,21 @@ import { loadRecordCalendarRows, loadRecordListPageRows } from "@/lib/record-que
 import { serializeAdminTargetUser } from "@/lib/user-name";
 import type { NextRequest } from "@/lib/express-compat";
 
-function member(user: Awaited<ReturnType<typeof getCurrentUser>>) {
-  if (!user) return jsonResponse({ error: "認証が必要です" }, 401);
-  if (user.role !== "USER") return jsonResponse({ error: "この機能は選手専用です" }, 403);
-  return null;
-}
-function isMember(user: Awaited<ReturnType<typeof getCurrentUser>>): user is NonNullable<Awaited<ReturnType<typeof getCurrentUser>>> {
-  return user !== null && user.role === "USER";
-}
 function admin(user: Awaited<ReturnType<typeof getCurrentUser>>) {
   if (!user) return jsonResponse({ error: "認証が必要です" }, 401);
   if (user.role !== "ADMIN") return jsonResponse({ error: "権限がありません" }, 403);
   return null;
 }
-const memberShape = (user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>) => ({
-  id: user.id, displayName: user.displayName, membershipStatus: user.membershipStatus,
+const memberShape = (user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, canSwitchToAdmin: boolean) => ({
+  id: user.id, role: user.role, canSwitchToAdmin, displayName: user.displayName, membershipStatus: user.membershipStatus,
 });
 const storyContent = (answers: Array<{ questionNo: number; answerText: string }>) =>
   answers.sort((a, b) => a.questionNo - b.questionNo).map((answer) => answer.answerText).join("\n\n");
 
 export async function home() {
-  const user = await getCurrentUser(); if (!isMember(user)) return member(user);
+  const authorization = await authorizePersonalRequest();
+  if ("response" in authorization) return authorization.response;
+  const { subject: user, canSwitchToAdmin } = authorization.access;
   const today = parseDateOnly(todayJST())!;
   try {
     const [todayLog, latestStory, dailyLogCount, storyVersionCount, competitionGoals] = await Promise.all([
@@ -37,12 +32,14 @@ export async function home() {
       prisma.storyVersion.count({ where: { userId: user.id } }),
       prisma.competitionGoal.findMany({ where: { userId: user.id, isActive: true }, orderBy: { updatedAt: "desc" } }),
     ]);
-    return jsonResponse({ user: memberShape(user), todayLog, latestStory, dailyLogCount, storyVersionCount, competitionGoals });
+    return jsonResponse({ user: memberShape(user, canSwitchToAdmin), todayLog, latestStory, dailyLogCount, storyVersionCount, competitionGoals });
   } catch (err) { return jsonResponse({ error: "ホームを読み込めませんでした" }, 500); }
 }
 
 export async function timeline(request: NextRequest) {
-  const user = await getCurrentUser(); if (!isMember(user)) return member(user);
+  const authorization = await authorizePersonalRequest();
+  if ("response" in authorization) return authorization.response;
+  const { subject: user, canSwitchToAdmin } = authorization.access;
   try {
     const state = parseRecordSearchParams(Object.fromEntries(request.nextUrl.searchParams), todayJST());
     if (state.view === "calendar") {
@@ -57,7 +54,7 @@ export async function timeline(request: NextRequest) {
         ...rows.goals.map((row) => ({ ...row, type: "goal" })),
         ...rows.stories.map((row) => ({ ...row, type: "story" })),
       ];
-      return jsonResponse({ user: memberShape(user), isReadOnly: user.membershipStatus === "WITHDRAWN", calendarData: { items, undatedGoalCount: rows.undatedGoalCount }, listPage: null });
+      return jsonResponse({ user: memberShape(user, canSwitchToAdmin), isReadOnly: user.membershipStatus === "WITHDRAWN", calendarData: { items, undatedGoalCount: rows.undatedGoalCount }, listPage: null });
     }
     const page = await loadRecordListPageRows(user.id, state.type, state.page, 30);
     const items = page.rows.map((row) => row.itemType === "daily"
@@ -65,21 +62,25 @@ export async function timeline(request: NextRequest) {
       : row.itemType === "goal"
         ? { id: row.recordId, type: "goal", goalType: row.goalType, title: row.title, details: row.details, targetDate: row.targetDate, isActive: row.isActive, archivedAt: row.archivedAt, updatedAt: row.updatedAt }
         : { id: row.recordId, type: "story", version: row.version, note: row.note, createdAt: row.sortTime });
-    return jsonResponse({ user: memberShape(user), isReadOnly: user.membershipStatus === "WITHDRAWN", calendarData: null, listPage: { items, totalItems: page.totalItems } });
+    return jsonResponse({ user: memberShape(user, canSwitchToAdmin), isReadOnly: user.membershipStatus === "WITHDRAWN", calendarData: null, listPage: { items, totalItems: page.totalItems } });
   } catch (err) { request.log.error({ err }, "Timeline read error"); return jsonResponse({ error: "記録を読み込めませんでした" }, 500); }
 }
 
 export async function storyHistory() {
-  const user = await getCurrentUser(); if (!isMember(user)) return member(user);
+  const authorization = await authorizePersonalRequest();
+  if ("response" in authorization) return authorization.response;
+  const { subject: user, canSwitchToAdmin } = authorization.access;
   const versions = await prisma.storyVersion.findMany({ where: { userId: user.id }, orderBy: { version: "desc" }, select: { id: true, version: true, note: true, createdAt: true } });
-  return jsonResponse({ user: memberShape(user), latestStory: versions[0] ?? null, versions, isReadOnly: user.membershipStatus === "WITHDRAWN" });
+  return jsonResponse({ user: memberShape(user, canSwitchToAdmin), latestStory: versions[0] ?? null, versions, isReadOnly: user.membershipStatus === "WITHDRAWN" });
 }
 export async function storyVersion(_request: NextRequest, { params }: { params: Promise<Record<string, string>> }) {
-  const user = await getCurrentUser(); if (!isMember(user)) return member(user);
+  const authorization = await authorizePersonalRequest();
+  if ("response" in authorization) return authorization.response;
+  const { subject: user, canSwitchToAdmin } = authorization.access;
   const { versionId } = await params;
   const version = await prisma.storyVersion.findFirst({ where: { id: versionId, userId: user.id }, include: { answers: { orderBy: { questionNo: "asc" } } } });
   if (!version) return jsonResponse({ error: "物語が見つかりません" }, 404);
-  return jsonResponse({ user: memberShape(user), story: { id: version.id, version: version.version, note: version.note, createdAt: version.createdAt, content: storyContent(version.answers) } });
+  return jsonResponse({ user: memberShape(user, canSwitchToAdmin), story: { id: version.id, version: version.version, note: version.note, createdAt: version.createdAt, content: storyContent(version.answers) } });
 }
 
 async function target(userId: string) {

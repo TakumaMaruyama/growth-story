@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { NextRequest } from '@/lib/express-compat';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth';
+import { authorizePersonalRequest, personalAccessErrorResponse } from '@/lib/personal-access';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseStoryInput } from '@/lib/validation';
 import { MAX_STORY_VERSIONS } from '@/lib/limits';
@@ -20,9 +20,9 @@ import {
 } from '@/lib/member-access';
 
 export async function GET(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    const authorization = await authorizePersonalRequest();
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
 
     try {
         const story = await prisma.storyVersion.findFirst({
@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
             orderBy: { version: 'desc' },
             select: {
                 version: true,
+                createdAt: true,
                 answers: {
                     orderBy: { questionNo: 'asc' },
                     select: { questionNo: true, answerText: true },
@@ -40,21 +41,29 @@ export async function GET(request: NextRequest) {
         return jsonResponse({
             user: {
                 id: user.id,
+                role: user.role,
+                canSwitchToAdmin,
                 displayName: user.displayName,
                 membershipStatus: user.membershipStatus,
             },
-            story,
+            story: story ? {
+                ...story,
+                content: story.answers.map((answer) => answer.answerText).join('\n\n'),
+            } : null,
+            isReadOnly: user.membershipStatus === 'WITHDRAWN',
         });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         request.log.error('Story read error:', error);
         return jsonResponse({ error: '競泳物語を読み込めませんでした' }, 500);
     }
 }
 
 export async function POST(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    const authorization = await authorizePersonalRequest(request);
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -78,9 +87,11 @@ export async function POST(request: NextRequest) {
         const input = parseStoryInput(json.data);
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        const result = await saveStoryVersion(user.id, input.value);
+        const result = await saveStoryVersion(user.id, input.value, writeContext);
         return jsonResponse({ success: true, ...result });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         if (error instanceof MembershipWriteBlockedError) {
             return jsonResponse({
                 error: MEMBERSHIP_WITHDRAWN_MESSAGE,

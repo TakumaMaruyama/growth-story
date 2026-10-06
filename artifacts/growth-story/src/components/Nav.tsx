@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'wouter';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookOpen, CalendarDays, Home, PenLine, LogOut, Target } from 'lucide-react';
 import { clearTabDrafts } from '../lib/tab-draft-store';
 
 interface NavProps {
     userName?: string;
     isAdmin?: boolean;
+    canSwitchMode?: boolean;
     beforeLogout?: () => boolean;
 }
 
@@ -19,8 +20,20 @@ const USER_LINKS = [
 
 const ADMIN_LINKS = [{ href: '/admin/users', label: 'ユーザー管理' }] as const;
 
-export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProps) {
+export default function Nav({ userName, isAdmin = false, canSwitchMode = false, beforeLogout }: NavProps) {
     const [location, setLocation] = useLocation();
+    const [canSwitchToMember, setCanSwitchToMember] = useState(false);
+    useEffect(() => {
+        let current = true;
+        setCanSwitchToMember(false);
+        if (isAdmin) {
+            fetch('/api/auth/account-switch', { credentials: 'include' })
+                .then(async (response) => response.ok ? response.json() : null)
+                .then((data) => { if (current) setCanSwitchToMember(data?.canSwitchToMember === true); })
+                .catch(() => { if (current) setCanSwitchToMember(false); });
+        }
+        return () => { current = false; };
+    }, [isAdmin, location]);
     const [loggingOut, setLoggingOut] = useState(false);
     const [logoutError, setLogoutError] = useState('');
     const links = isAdmin ? ADMIN_LINKS : USER_LINKS;
@@ -57,6 +70,14 @@ export default function Nav({ userName, isAdmin = false, beforeLogout }: NavProp
                     </Link>
                     <div className="account-actions">
                         {userName && <span className="user-name">{userName}</span>}
+                        {(isAdmin ? canSwitchToMember : canSwitchMode) && (
+                            <Link
+                                href={isAdmin ? '/' : '/admin/users'}
+                                className="btn btn-secondary btn-small"
+                            >
+                                {isAdmin ? '自分のページへ' : '管理画面へ'}
+                            </Link>
+                        )}
                         <button
                             type="button"
                             onClick={handleLogout}

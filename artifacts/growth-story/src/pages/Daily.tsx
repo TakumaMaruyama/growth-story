@@ -34,6 +34,8 @@ import {
 
 interface UserInfo {
     id: string;
+    role: 'USER';
+    canSwitchToAdmin: boolean;
     displayName: string;
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
@@ -237,6 +239,7 @@ function DailyLogPageContent() {
     const requestKey = requestedDate || TODAY_REQUEST_KEY;
 
     const [user, setUser] = useState<UserInfo | null>(null);
+    const [subjectChanged, setSubjectChanged] = useState(false);
     const [loadedDate, setLoadedDate] = useState<string | null>(null);
     const [todayDate, setTodayDate] = useState<string | null>(null);
     const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
@@ -524,6 +527,7 @@ function DailyLogPageContent() {
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (subjectChanged) return;
 
         if (isReadOnly) {
             setError('退会中のため、新規入力や更新はできません。');
@@ -556,7 +560,7 @@ function DailyLogPageContent() {
         try {
             const response = await fetch('/api/daily', { credentials: 'include',
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Expected-Personal-User-Id': user?.id ?? '' },
                 body: JSON.stringify({ date: saveDate, baseRevision, ...savedLog }),
             });
             const data = await response.json().catch(() => null) as {
@@ -567,6 +571,11 @@ function DailyLogPageContent() {
                 eligibleRecordCount?: number;
                 badgeReachCounts?: DailyLogBadgeReachCount[];
             } | null;
+            if (data?.code === 'PERSONAL_SUBJECT_CHANGED' || data?.code === 'PERSONAL_ACCESS_UNAVAILABLE') {
+                setSubjectChanged(true);
+                setError(data.error ?? '対象が変わりました。入力をコピーしてから再読み込みしてください。');
+                return;
+            }
             if (response.status === 403 && data?.code === 'MEMBERSHIP_WITHDRAWN') {
                 setUser((current) => current ? { ...current, membershipStatus: 'WITHDRAWN' } : current);
                 setError('退会または保護者同意の撤回により保存できませんでした。現在の入力は未保存です。必要な内容をコピーしてください。');
@@ -621,6 +630,7 @@ function DailyLogPageContent() {
     };
 
     const canSave = Boolean(
+        !subjectChanged &&
         loadedDate
         && loadedRequestKey === requestKey
         && !loading
@@ -647,7 +657,7 @@ function DailyLogPageContent() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.canSwitchToAdmin === true} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-quick-log">
                 <div className="quick-log-header">
                     <div className="quick-date-picker">

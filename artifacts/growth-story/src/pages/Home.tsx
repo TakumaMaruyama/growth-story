@@ -116,7 +116,7 @@ export default function Home() {
 
     return (
         <>
-            <Nav userName={user?.displayName} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.canSwitchToAdmin === true} />
             <main id="main-content" className="container">
                 {isReadOnly && (
                     <div className="alert alert-warning" role="status">

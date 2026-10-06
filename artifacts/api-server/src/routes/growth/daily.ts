@@ -1,6 +1,6 @@
 import type { NextRequest } from '@/lib/express-compat';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth';
+import { authorizePersonalRequest, personalAccessErrorResponse } from '@/lib/personal-access';
 import { parseDailyLogDate, parseDateOnly, todayJST } from '@/lib/date';
 import { jsonResponse, readJsonObject } from '@/lib/request';
 import { parseDailyLogInput } from '@/lib/validation';
@@ -19,9 +19,9 @@ import {
 } from '@/lib/member-access';
 
 export async function GET(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
+    const authorization = await authorizePersonalRequest();
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
 
     const today = todayJST();
     const date = request.nextUrl.searchParams.get('date') || today;
@@ -68,6 +68,8 @@ export async function GET(request: NextRequest) {
         return jsonResponse({
             user: {
                 id: user.id,
+                role: user.role,
+                canSwitchToAdmin,
                 displayName: user.displayName,
                 membershipStatus: user.membershipStatus,
             },
@@ -79,15 +81,17 @@ export async function GET(request: NextRequest) {
             badgeReachCounts,
         });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         request.log.error('Daily log read error:', error);
         return jsonResponse({ error: '日誌を読み込めませんでした' }, 500);
     }
 }
 
 export async function POST(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: '利用者アカウント専用の機能です' }, 403);
+    const authorization = await authorizePersonalRequest(request);
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -117,7 +121,7 @@ export async function POST(request: NextRequest) {
         const input = parseDailyLogInput(json.data);
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        const log = await saveDailyLog({ userId: user.id, ...input.value });
+        const log = await saveDailyLog({ userId: user.id, ...input.value }, writeContext);
         const todayDate = parseDateOnly(todayJST())!;
         const [eligibleRecordCount, badgeReachCounts] = await Promise.all([
             countEligibleDailyLogs(user.id, todayDate),
@@ -132,6 +136,8 @@ export async function POST(request: NextRequest) {
             badgeReachCounts,
         });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         if (error instanceof MembershipWriteBlockedError) {
             return jsonResponse({
                 error: MEMBERSHIP_WITHDRAWN_MESSAGE,

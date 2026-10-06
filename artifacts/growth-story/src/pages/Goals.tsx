@@ -32,6 +32,8 @@ type EditableGoalField = 'title' | 'details' | 'targetDate';
 
 interface UserInfo {
     id: string;
+    role: 'USER';
+    canSwitchToAdmin: boolean;
     displayName: string;
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
@@ -442,6 +444,7 @@ function GoalFields({ form, idPrefix, variant, disabled, onChange }: GoalFieldsP
 export default function GoalsPage() {
     const [, setLocation] = useLocation();
     const [user, setUser] = useState<UserInfo | null>(null);
+    const [subjectChanged, setSubjectChanged] = useState(false);
     const [forms, setForms] = useState<GoalFormState>(emptyState);
     const [baselineForms, setBaselineForms] = useState<GoalFormState>(emptyState);
     const [archivedGoals, setArchivedGoals] = useState<GoalApi[]>([]);
@@ -672,6 +675,7 @@ export default function GoalsPage() {
     };
 
     const saveGoal = async (goal: GoalForm, key: string) => {
+        if (subjectChanged) return;
         if (isReadOnly) {
             setError('退会中のため、大会目標の新規入力や更新はできません。');
             return;
@@ -698,7 +702,7 @@ export default function GoalsPage() {
             const response = await fetch(creating ? '/api/goals' : `/api/goals/${encodeURIComponent(goal.id!)}`, {
                 credentials: 'include',
                 method: creating ? 'POST' : 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Expected-Personal-User-Id': user?.id ?? '' },
                 body: JSON.stringify(creating
                     ? {
                         type: goal.type,
@@ -719,6 +723,11 @@ export default function GoalsPage() {
                 goal?: unknown;
             } | null;
 
+            if (data?.code === 'PERSONAL_SUBJECT_CHANGED' || data?.code === 'PERSONAL_ACCESS_UNAVAILABLE') {
+                setSubjectChanged(true);
+                setError(data.error ?? '対象が変わりました。入力をコピーしてから再読み込みしてください。');
+                return;
+            }
             if (response.status === 401) {
                 setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
@@ -782,6 +791,7 @@ export default function GoalsPage() {
     };
 
     const archiveGoal = async (goal: GoalForm, key: string) => {
+        if (subjectChanged) return;
         if (isReadOnly) {
             setError('退会中のため、大会目標の新規入力や更新はできません。');
             return;
@@ -804,7 +814,7 @@ export default function GoalsPage() {
             const response = await fetch(`/api/goals/${encodeURIComponent(goal.id)}`, {
                 credentials: 'include',
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Expected-Personal-User-Id': user?.id ?? '' },
                 body: JSON.stringify({ baseRevision: goal.revision }),
             });
             const data = await response.json().catch(() => null) as {
@@ -813,6 +823,11 @@ export default function GoalsPage() {
                 goal?: unknown;
             } | null;
 
+            if (data?.code === 'PERSONAL_SUBJECT_CHANGED' || data?.code === 'PERSONAL_ACCESS_UNAVAILABLE') {
+                setSubjectChanged(true);
+                setError(data.error ?? '対象が変わりました。入力をコピーしてから再読み込みしてください。');
+                return;
+            }
             if (response.status === 401) {
                 setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
@@ -861,6 +876,7 @@ export default function GoalsPage() {
     };
 
     const deleteArchivedGoal = async (goal: GoalApi) => {
+        if (subjectChanged) return;
         if (isReadOnly) {
             setError('退会中のため、大会目標の新規入力や更新はできません。');
             return;
@@ -878,7 +894,7 @@ export default function GoalsPage() {
             const response = await fetch(`/api/goals/${encodeURIComponent(goal.id)}/permanent`, {
                 credentials: 'include',
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Expected-Personal-User-Id': user?.id ?? '' },
                 body: JSON.stringify({ baseRevision: goal.revision }),
             });
             const data = await response.json().catch(() => null) as {
@@ -886,6 +902,11 @@ export default function GoalsPage() {
                 error?: string;
             } | null;
 
+            if (data?.code === 'PERSONAL_SUBJECT_CHANGED' || data?.code === 'PERSONAL_ACCESS_UNAVAILABLE') {
+                setSubjectChanged(true);
+                setError(data.error ?? '対象が変わりました。入力をコピーしてから再読み込みしてください。');
+                return;
+            }
             if (response.status === 401) {
                 setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
@@ -997,7 +1018,7 @@ export default function GoalsPage() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.canSwitchToAdmin === true} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-narrow goals-page">
                 <header className="goals-page-header">
                     <div className="goals-page-title-row">
@@ -1118,7 +1139,7 @@ export default function GoalsPage() {
                                     type="submit"
                                     className="btn btn-primary"
                                     disabled={
-                                        busy
+                                        busy || subjectChanged
                                         || !forms.newGoal.title.trim()
                                         || ((forms.newGoal.type === 'annual' || forms.newGoal.type === 'milestone')
                                             && !forms.newGoal.targetDate)
@@ -1257,7 +1278,7 @@ export default function GoalsPage() {
                                                     type="submit"
                                                     className="btn btn-primary"
                                                     disabled={
-                                                        busy
+                                                        busy || subjectChanged
                                                         || !goal.title.trim()
                                                         || ((goal.type === 'annual' || goal.type === 'milestone') && !goal.targetDate)
                                                         || !changed
@@ -1270,7 +1291,7 @@ export default function GoalsPage() {
                                                     type="button"
                                                     className="btn btn-secondary goal-delete-button"
                                                     onClick={() => void archiveGoal(goal, key)}
-                                                    disabled={busy}
+                                                    disabled={busy || subjectChanged}
                                                 >
                                                     <Archive aria-hidden="true" size={19} />
                                                     {deletingKey === key ? '移動中…' : '過去へ移す'}
@@ -1338,7 +1359,7 @@ export default function GoalsPage() {
                                                     type="button"
                                                     className="btn btn-secondary btn-small goal-delete-button"
                                                     onClick={() => void deleteArchivedGoal(goal)}
-                                                    disabled={busy}
+                                                    disabled={busy || subjectChanged}
                                                     aria-label={`${displayGoal.meetName || '大会目標'}を完全に削除`}
                                                 >
                                                     <Trash aria-hidden="true" size={17} />

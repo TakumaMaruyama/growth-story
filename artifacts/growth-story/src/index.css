@@ -465,6 +465,7 @@ a:not(.btn):not(.nav-link):not(.brand-link) {
 
 .nav-topline {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;

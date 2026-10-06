@@ -1,5 +1,5 @@
 import type { NextRequest } from '@/lib/express-compat';
-import { getCurrentUser } from '@/lib/auth';
+import { authorizePersonalRequest, personalAccessErrorResponse } from '@/lib/personal-access';
 import { serializeCompetitionGoal } from '@/lib/competition-goal-contract';
 import { competitionGoalWriteRateLimitRules } from '@/lib/competition-goal-rate-limit';
 import {
@@ -18,9 +18,9 @@ import {
 } from '@/lib/member-access';
 
 export async function GET(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    const authorization = await authorizePersonalRequest();
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
 
     try {
         const allGoals = await listCompetitionGoals(user.id, true);
@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
         return jsonResponse({
             user: {
                 id: user.id,
+                role: user.role,
+                canSwitchToAdmin,
                 displayName: user.displayName,
                 membershipStatus: user.membershipStatus,
             },
@@ -40,15 +42,17 @@ export async function GET(request: NextRequest) {
             archivedGoals: archivedGoals.map(serializeCompetitionGoal),
         });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         request.log.error('Competition goal read error:', error);
         return jsonResponse({ error: '大会目標を読み込めませんでした' }, 500);
     }
 }
 
 export async function POST(request: NextRequest) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    const authorization = await authorizePersonalRequest(request);
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -72,13 +76,15 @@ export async function POST(request: NextRequest) {
         const input = parseCompetitionGoalCreateInput(json.data);
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
-        const goal = await createCompetitionGoal(user.id, input.value);
+        const goal = await createCompetitionGoal(user.id, input.value, writeContext);
         return jsonResponse({
             success: true,
             goal: serializeCompetitionGoal(goal),
             created: true,
         }, 201);
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         if (error instanceof MembershipWriteBlockedError) {
             return jsonResponse({
                 error: MEMBERSHIP_WITHDRAWN_MESSAGE,

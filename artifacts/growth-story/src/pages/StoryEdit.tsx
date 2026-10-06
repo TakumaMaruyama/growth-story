@@ -20,6 +20,8 @@ import type { StoryQuestionNo } from '@/lib/story-questions';
 
 interface UserInfo {
     id: string;
+    role: 'USER';
+    canSwitchToAdmin: boolean;
     displayName: string;
     membershipStatus: 'ACTIVE' | 'WITHDRAWN';
 }
@@ -121,6 +123,7 @@ function removeDraft(key: string): boolean {
 export default function StoryEditPage() {
     const [, setLocation] = useLocation();
     const [user, setUser] = useState<UserInfo | null>(null);
+    const [subjectChanged, setSubjectChanged] = useState(false);
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [note, setNote] = useState('');
     const [serverState, setServerState] = useState<StoryFormState>({ answers: {}, note: '' });
@@ -273,6 +276,7 @@ export default function StoryEditPage() {
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (subjectChanged) return;
         if (isReadOnly) {
             setSaveError('退会中のため、新規入力や更新はできません。');
             return;
@@ -290,7 +294,7 @@ export default function StoryEditPage() {
         try {
             const response = await fetch('/api/story', { credentials: 'include',
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Expected-Personal-User-Id': user?.id ?? '' },
                 body: JSON.stringify({
                     baseVersion: draftBaseVersionRef.current,
                     answers: submittedAnswers,
@@ -299,6 +303,11 @@ export default function StoryEditPage() {
             });
             const raw: unknown = await response.json().catch(() => null);
             const apiError = parseApiError(raw);
+            if (apiError.code === 'PERSONAL_SUBJECT_CHANGED' || apiError.code === 'PERSONAL_ACCESS_UNAVAILABLE') {
+                setSubjectChanged(true);
+                setSaveError(apiError.error ?? '対象が変わりました。入力をコピーしてから再読み込みしてください。');
+                return;
+            }
             if (response.status === 401) {
                 setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                 return;
@@ -335,7 +344,7 @@ export default function StoryEditPage() {
 
     return (
         <>
-            <Nav userName={user?.displayName} beforeLogout={confirmPageExit} />
+            <Nav userName={user?.displayName} canSwitchMode={user?.canSwitchToAdmin === true} beforeLogout={confirmPageExit} />
             <main id="main-content" className="container container-narrow">
                 <div className="page-header">
                     <div>
@@ -544,7 +553,7 @@ export default function StoryEditPage() {
                                 <button
                                     type="submit"
                                     className="btn btn-primary"
-                                    disabled={saving || !hasChanges || versionConflict !== null || hasReachedVersionLimit || hasOversizedAnswers}
+                                    disabled={subjectChanged || saving || !hasChanges || versionConflict !== null || hasReachedVersionLimit || hasOversizedAnswers}
                                 >
                                     {saving ? '保存中…' : '更新内容を保存'}
                                 </button>

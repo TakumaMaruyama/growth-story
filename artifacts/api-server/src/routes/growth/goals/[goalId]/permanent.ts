@@ -1,5 +1,5 @@
 import type { NextRequest } from '@/lib/express-compat';
-import { getCurrentUser } from '@/lib/auth';
+import { authorizePersonalRequest, personalAccessErrorResponse } from '@/lib/personal-access';
 import { competitionGoalWriteRateLimitRules } from '@/lib/competition-goal-rate-limit';
 import {
     CompetitionGoalNotFoundError,
@@ -21,9 +21,9 @@ interface Props {
 }
 
 export async function DELETE(request: NextRequest, { params }: Props) {
-    const user = await getCurrentUser();
-    if (!user) return jsonResponse({ error: '認証が必要です' }, 401);
-    if (user.role !== 'USER') return jsonResponse({ error: 'この機能は選手専用です' }, 403);
+    const authorization = await authorizePersonalRequest(request);
+    if ('response' in authorization) return authorization.response;
+    const { subject: user, canSwitchToAdmin, writeContext } = authorization.access;
     if (!canMemberWrite(user)) {
         return jsonResponse({
             error: MEMBERSHIP_WITHDRAWN_MESSAGE,
@@ -48,9 +48,11 @@ export async function DELETE(request: NextRequest, { params }: Props) {
         if (!input.ok) return jsonResponse({ error: input.error }, 400);
 
         const { goalId } = await params;
-        await deleteArchivedCompetitionGoal(user.id, goalId, input.value.baseRevision);
+        await deleteArchivedCompetitionGoal(user.id, goalId, input.value.baseRevision, writeContext);
         return jsonResponse({ success: true });
     } catch (error) {
+        const denied = personalAccessErrorResponse(error);
+        if (denied) return denied;
         if (error instanceof MembershipWriteBlockedError) {
             return jsonResponse({
                 error: MEMBERSHIP_WITHDRAWN_MESSAGE,

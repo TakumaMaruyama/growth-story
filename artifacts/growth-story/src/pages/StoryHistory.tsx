@@ -3,6 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { BookOpenText } from 'lucide-react';
 import { formatJSTDisplay } from '../lib/date';
 import Nav from '../components/Nav';
+import { loginHref } from '../lib/return-path';
 
 export default function StoryHistory() {
     const [data, setData] = useState<any>(null);
@@ -15,7 +16,7 @@ export default function StoryHistory() {
             try {
                 const response = await fetch('/api/story/history', { credentials: 'include' });
                 if (response.status === 401) {
-                    setLocation('/login');
+                    setLocation(loginHref(`${window.location.pathname}${window.location.search}`, 'user'));
                     return;
                 }
                 if (response.status === 403) {
@@ -56,7 +57,7 @@ export default function StoryHistory() {
 
     return (
         <>
-            <Nav userName={user.displayName} />
+            <Nav userName={user.displayName} canSwitchMode={user?.canSwitchToAdmin === true} />
             <main id="main-content" className="container">
                 <header className="page-header">
                     <div>

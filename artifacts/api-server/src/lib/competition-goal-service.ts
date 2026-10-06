@@ -1,3 +1,4 @@
+import type { PersonalWriteContext } from './personal-access';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { assertMemberWritableInTransaction } from './member-access';
@@ -35,12 +36,13 @@ export class CompetitionGoalInvalidInputError extends Error {}
 
 async function withUserGoalWrite<T>(
     userId: string,
+    authorization: PersonalWriteContext,
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
             return await prisma.$transaction(async (tx) => {
-                await assertMemberWritableInTransaction(tx, userId);
+                await assertMemberWritableInTransaction(tx, userId, authorization);
                 // Keeps competition-goal writes ordered for each user while
                 // preserving the existing compare-and-swap update behavior.
                 await tx.$queryRaw`
@@ -76,7 +78,7 @@ export async function listCompetitionGoals(userId: string, includeInactive = fal
     });
 }
 
-export async function createCompetitionGoal(userId: string, input: CompetitionGoalCreateInput) {
+export async function createCompetitionGoal(userId: string, input: CompetitionGoalCreateInput, authorization: PersonalWriteContext) {
     if ((input.type === 'ANNUAL' || input.type === 'MILESTONE') && !input.targetDate) {
         throw new CompetitionGoalInvalidInputError(
             input.type === 'ANNUAL' ? '対象年を入力してください' : '期限を入力してください',
@@ -89,7 +91,7 @@ export async function createCompetitionGoal(userId: string, input: CompetitionGo
     ) {
         throw new CompetitionGoalInvalidInputError('年間目標は対象年で入力してください');
     }
-    return withUserGoalWrite(userId, async (tx) => {
+    return withUserGoalWrite(userId, authorization, async (tx) => {
         return tx.competitionGoal.create({
             data: { userId, ...input },
             select: GOAL_SELECT,
@@ -101,8 +103,9 @@ export async function updateCompetitionGoal(
     userId: string,
     goalId: string,
     input: CompetitionGoalUpdateInput,
+    authorization: PersonalWriteContext,
 ) {
-    return withUserGoalWrite(userId, async (tx) => {
+    return withUserGoalWrite(userId, authorization, async (tx) => {
         const current = await tx.competitionGoal.findFirst({
             where: { id: goalId, userId },
             select: {
@@ -164,8 +167,9 @@ export async function archiveCompetitionGoal(
     userId: string,
     goalId: string,
     baseRevision: number,
+    authorization: PersonalWriteContext,
 ) {
-    return withUserGoalWrite(userId, async (tx) => {
+    return withUserGoalWrite(userId, authorization, async (tx) => {
         const archived = await tx.competitionGoal.updateManyAndReturn({
             where: { id: goalId, userId, revision: baseRevision, isActive: true },
             data: {
@@ -191,8 +195,9 @@ export async function deleteArchivedCompetitionGoal(
     userId: string,
     goalId: string,
     baseRevision: number,
+    authorization: PersonalWriteContext,
 ): Promise<void> {
-    await withUserGoalWrite(userId, async (tx) => {
+    await withUserGoalWrite(userId, authorization, async (tx) => {
         const deleted = await tx.competitionGoal.deleteMany({
             where: {
                 id: goalId,
