@@ -4,6 +4,7 @@ import { Link } from 'wouter';
 import Nav from '@/components/Nav';
 import { getDailyActivityLabel, type DailyActivityType } from '@/lib/daily-activity';
 import { loginHref } from '@/lib/return-path';
+import { formatDateOnlyWithWeekday } from '@/lib/date';
 
 interface UserInfo {
     displayName: string;
@@ -81,7 +82,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
                 <div className="card">
                     {logs.length > 0 ? (
                         <div className="table-wrap">
-                            <table className="table">
+                            <table className="table admin-daily-table">
                                 <thead>
                                     <tr>
                                         <th scope="col">日付</th>
@@ -93,7 +94,7 @@ export default function AdminUserDailyPage({ params }: { params: { userId: strin
                                 <tbody>
                                     {logs.map((log) => (
                                         <tr key={log.id}>
-                                            <td>{log.logDate}</td>
+                                            <td><time dateTime={log.logDate}>{formatDateOnlyWithWeekday(log.logDate)}</time></td>
                                             <td>{log.score}/10</td>
                                             <td>{getDailyActivityLabel(log.activityType)}</td>
                                             <td>
