@@ -51,6 +51,15 @@ export function parseDateOnly(dateStr: string): Date | null {
     return date;
 }
 
+/** 日付だけの値を、端末のタイムゾーンによらない日本語の曜日付き表示にする。 */
+export function formatDateOnlyWithWeekday(dateStr: string): string {
+    const date = parseDateOnly(dateStr);
+    if (!date) return dateStr;
+
+    const weekday = ['日', '月', '火', '水', '木', '金', '土'][date.getUTCDay()];
+    return `${date.getUTCFullYear()}年${date.getUTCMonth() + 1}月${date.getUTCDate()}日（${weekday}）`;
+}
+
 /** UTC 0時のDate同士から、日付だけの経過日数を取得する。 */
 export function differenceInDateOnlyDays(later: Date, earlier: Date): number {
     return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / DATE_ONLY_MILLISECONDS));
